@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --app-color-primary-50: #eff6ff;
+  --app-color-primary-100: #dbeafe;
+  --app-color-primary-200: #bfdbfe;
+  --app-color-primary-300: #93c5fd;
+  --app-color-primary-400: #60a5fa;
+  --app-color-primary-500: #3b82f6;
+  --app-color-primary-600: #2563eb;
+  --app-color-primary-700: #1d4ed8;
+  --app-color-primary-800: #1e40af;
+  --app-color-primary-900: #1e3a8a;
+  --app-color-neutral-0: #ffffff;
+  --app-color-neutral-50: #f8fafc;
+  --app-color-neutral-100: #f1f5f9;
+  --app-color-neutral-200: #e2e8f0;
+  --app-color-neutral-300: #cbd5e1;
+  --app-color-neutral-400: #94a3b8;
+  --app-color-neutral-500: #64748b;
+  --app-color-neutral-600: #475569;
+  --app-color-neutral-700: #334155;
+  --app-color-neutral-800: #1e293b;
+  --app-color-neutral-900: #0f172a;
+  --app-color-neutral-950: #020617;
+  --app-color-success-100: #dcfce7;
+  --app-color-success-500: #16a34a;
+  --app-color-danger-100: #fee2e2;
+  --app-color-danger-500: #dc2626;
+  --app-color-warning-100: #fef3c7;
+  --app-color-warning-500: #d97706;
+  --app-color-info-100: #cffafe;
+  --app-color-info-500: #0891b2;
+  --app-background: var(--app-color-neutral-50);
+  --app-surface: var(--app-color-neutral-0);
+  --app-surface-alt: var(--app-color-primary-50);
+  --app-border: var(--app-color-neutral-200);
+  --app-text: var(--app-color-neutral-900);
+  --app-muted: var(--app-color-neutral-600);
+  --app-primary: var(--app-color-primary-600);
+  --app-primary-hover: var(--app-color-primary-700);
+  --app-accent: var(--app-color-info-500);
+  --app-success: var(--app-color-success-500);
+  --app-warning: var(--app-color-warning-500);
+  --app-danger: var(--app-color-danger-500);
+  --app-info: var(--app-color-info-500);
+  --app-shadow-theme: 0 24px 80px rgba(15, 23, 42, 0.08);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --app-background: var(--app-color-neutral-950);
+  --app-surface: var(--app-color-neutral-900);
+  --app-surface-alt: var(--app-color-neutral-800);
+  --app-border: var(--app-color-neutral-800);
+  --app-text: var(--app-color-neutral-50);
+  --app-muted: var(--app-color-neutral-400);
+  --app-primary: var(--app-color-primary-700);
+  --app-primary-hover: var(--app-color-primary-600);
+  --app-accent: var(--app-color-info-500);
+  --app-success: var(--app-color-success-500);
+  --app-warning: var(--app-color-warning-500);
+  --app-danger: var(--app-color-danger-500);
+  --app-info: var(--app-color-info-500);
+  --app-shadow-theme: 0 24px 80px rgba(2, 6, 23, 0.5);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme-preference='system'] {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--app-background);
+  color: var(--app-text);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+@theme inline {
+  --color-primary-50: var(--app-color-primary-50);
+  --color-primary-100: var(--app-color-primary-100);
+  --color-primary-200: var(--app-color-primary-200);
+  --color-primary-300: var(--app-color-primary-300);
+  --color-primary-400: var(--app-color-primary-400);
+  --color-primary-500: var(--app-color-primary-500);
+  --color-primary-600: var(--app-color-primary-600);
+  --color-primary-700: var(--app-color-primary-700);
+  --color-primary-800: var(--app-color-primary-800);
+  --color-primary-900: var(--app-color-primary-900);
+  --color-neutral-0: var(--app-color-neutral-0);
+  --color-neutral-50: var(--app-color-neutral-50);
+  --color-neutral-100: var(--app-color-neutral-100);
+  --color-neutral-200: var(--app-color-neutral-200);
+  --color-neutral-300: var(--app-color-neutral-300);
+  --color-neutral-400: var(--app-color-neutral-400);
+  --color-neutral-500: var(--app-color-neutral-500);
+  --color-neutral-600: var(--app-color-neutral-600);
+  --color-neutral-700: var(--app-color-neutral-700);
+  --color-neutral-800: var(--app-color-neutral-800);
+  --color-neutral-900: var(--app-color-neutral-900);
+  --color-neutral-950: var(--app-color-neutral-950);
+  --color-success-100: var(--app-color-success-100);
+  --color-success-500: var(--app-color-success-500);
+  --color-danger-100: var(--app-color-danger-100);
+  --color-danger-500: var(--app-color-danger-500);
+  --color-warning-100: var(--app-color-warning-100);
+  --color-warning-500: var(--app-color-warning-500);
+  --color-info-100: var(--app-color-info-100);
+  --color-info-500: var(--app-color-info-500);
+  --color-background: var(--app-background);
+  --color-surface: var(--app-surface);
+  --color-surface-alt: var(--app-surface-alt);
+  --color-border: var(--app-border);
+  --color-text: var(--app-text);
+  --color-muted: var(--app-muted);
+  --color-primary: var(--app-primary);
+  --color-primary-hover: var(--app-primary-hover);
+  --color-accent: var(--app-accent);
+  --color-success: var(--app-success);
+  --color-warning: var(--app-warning);
+  --color-danger: var(--app-danger);
+  --color-info: var(--app-info);
+  --shadow-theme: var(--app-shadow-theme);
+}
+
+html {
+  background: var(--app-background);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.hero-radial {
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--app-primary) 18%, transparent), transparent 35%),
+    radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 15%, transparent), transparent 30%);
+}
+
+.hero-card-gradient {
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--app-primary) 12%, transparent),
+      color-mix(in srgb, var(--app-accent) 10%, transparent)
+    );
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--app-color-neutral-300);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--app-color-neutral-400);
+}
+
+:root[data-theme='dark'] .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--app-color-neutral-600);
+}
+
+:root[data-theme='dark'] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--app-color-neutral-500);
+}
