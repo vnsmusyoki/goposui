@@ -60,6 +60,7 @@ import {
   Edit,
   Eye
 } from 'lucide-react';
+import { useAuth } from '../auth/AuthProvider';
 
 // ============================================
 // TYPES
@@ -367,6 +368,7 @@ const getTierIcon = (tier: string) => {
 
 const PosLayout = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -627,6 +629,17 @@ const PosLayout = () => {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.success('Logged out successfully');
+    } catch {
+      toast.error('Unable to log out right now.');
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -768,7 +781,7 @@ const PosLayout = () => {
             </button>
             
             <button
-              onClick={() => navigate('/logout')}
+              onClick={handleLogout}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             >
               <LogOut className="w-5 h-5" />

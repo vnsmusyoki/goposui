@@ -168,10 +168,7 @@ function Register() {
         </Link>
       </div>
 
-      <div className="mt-6 flex items-center gap-2 rounded-2xl border border-info-100 bg-info-100 px-4 py-3 text-sm text-info-500">
-        <ShieldCheck className="h-4 w-4" />
-        <span>Basic account details only. You can add more information after login.</span>
-      </div>
+      
     </div>
   )
 }

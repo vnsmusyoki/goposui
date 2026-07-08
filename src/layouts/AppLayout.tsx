@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import * as Icons from 'lucide-react';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import { useTheme } from '../theme/ThemeProvider';
+import { useAuth } from '../auth/AuthProvider';
+import { getWorkspaceLabel, getWorkspaceSlug } from '../auth/workspace';
+import type { ModuleResponse } from '../auth/types';
 import {
   Bell,
   Search,
@@ -783,68 +786,144 @@ interface SidebarNavItem {
   children?: SidebarNavItem[];
 }
 
-const SIDEBAR_NAV: SidebarNavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/pos/dashboard' },
+type WorkspaceRole = 'admin' | 'business';
+
+const mapModulesToSidebarNav = (modules: ModuleResponse[]): SidebarNavItem[] => {
+  return modules.map((module) => ({
+    id: module.code,
+    label: module.name,
+    icon: module.icon || 'LayoutDashboard',
+    path: module.path,
+    children: module.children?.map((child) => ({
+      id: child.code,
+      label: child.name,
+      icon: child.icon || 'LayoutDashboard',
+      path: child.path,
+    })),
+  }));
+};
+
+const ADMIN_SIDEBAR_NAV: SidebarNavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/admin/dashboard' },
   { 
     id: 'sales', 
     label: 'Sales', 
     icon: 'ShoppingBag', 
-    path: '/pos/sales',
+    path: '/admin/sales',
     children: [
-      { id: 'orders', label: 'Orders', icon: 'ShoppingCart', path: '/pos/sales/orders' },
-      { id: 'returns', label: 'Returns', icon: 'Undo2', path: '/pos/sales/returns' },
-      { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/pos/sales/invoices' },
+      { id: 'orders', label: 'Orders', icon: 'ShoppingCart', path: '/admin/sales/orders' },
+      { id: 'returns', label: 'Returns', icon: 'Undo2', path: '/admin/sales/returns' },
+      { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/admin/sales/invoices' },
     ]
   },
   { 
     id: 'products', 
     label: 'Products', 
     icon: 'Package', 
-    path: '/pos/products',
+    path: '/admin/products',
     children: [
-      { id: 'catalog', label: 'Catalog', icon: 'Box', path: '/pos/products/catalog' },
-      { id: 'categories', label: 'Categories', icon: 'Layers', path: '/pos/products/categories' },
-      { id: 'inventory', label: 'Inventory', icon: 'ClipboardList', path: '/pos/products/inventory' },
+      { id: 'catalog', label: 'Catalog', icon: 'Box', path: '/admin/products/catalog' },
+      { id: 'categories', label: 'Categories', icon: 'Layers', path: '/admin/products/categories' },
+      { id: 'inventory', label: 'Inventory', icon: 'ClipboardList', path: '/admin/products/inventory' },
     ]
   },
   { 
     id: 'customers', 
     label: 'Customers', 
     icon: 'Users', 
-    path: '/pos/customers',
+    path: '/admin/customers',
     children: [
-      { id: 'all', label: 'All Customers', icon: 'User', path: '/pos/customers' },
-      { id: 'loyalty', label: 'Loyalty Program', icon: 'Award', path: '/pos/customers/loyalty' },
+      { id: 'all', label: 'All Customers', icon: 'User', path: '/admin/customers' },
+      { id: 'loyalty', label: 'Loyalty Program', icon: 'Award', path: '/admin/customers/loyalty' },
     ]
   },
   { 
     id: 'pos', 
     label: 'Point of Sale', 
     icon: 'CreditCard', 
-    path: '/pos/terminal' 
+    path: '/admin/terminal' 
   },
   { 
     id: 'reports', 
     label: 'Reports', 
     icon: 'PieChart', 
-    path: '/pos/reports',
+    path: '/admin/reports',
     children: [
-      { id: 'analytics', label: 'Analytics', icon: 'TrendingUp', path: '/pos/reports/analytics' },
-      { id: 'tax', label: 'Tax Reports', icon: 'Percent', path: '/pos/reports/tax' },
+      { id: 'analytics', label: 'Analytics', icon: 'TrendingUp', path: '/admin/reports/analytics' },
+      { id: 'tax', label: 'Tax Reports', icon: 'Percent', path: '/admin/reports/tax' },
     ]
   },
   { 
     id: 'settings', 
     label: 'Settings', 
     icon: 'Settings', 
-    path: '/pos/settings',
+    path: '/admin/settings',
     children: [
-      { id: 'store', label: 'Store Settings', icon: 'Store', path: '/pos/settings/store' },
-      { id: 'payment', label: 'Payment Methods', icon: 'CreditCard', path: '/pos/settings/payment' },
-      { id: 'shipping', label: 'Shipping', icon: 'Truck', path: '/pos/settings/shipping' },
+      { id: 'store', label: 'Store Settings', icon: 'Store', path: '/admin/settings/store' },
+      { id: 'payment', label: 'Payment Methods', icon: 'CreditCard', path: '/admin/settings/payment' },
+      { id: 'shipping', label: 'Shipping', icon: 'Truck', path: '/admin/settings/shipping' },
     ]
   },
 ];
+
+const BUSINESS_SIDEBAR_NAV: SidebarNavItem[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/business/dashboard' },
+  { 
+    id: 'sales', 
+    label: 'Sales', 
+    icon: 'ShoppingBag', 
+    path: '/business/sales',
+    children: [
+      { id: 'orders', label: 'Orders', icon: 'ShoppingCart', path: '/business/sales/orders' },
+      { id: 'invoices', label: 'Invoices', icon: 'FileText', path: '/business/sales/invoices' },
+    ]
+  },
+  { 
+    id: 'products', 
+    label: 'Products', 
+    icon: 'Package', 
+    path: '/business/products',
+    children: [
+      { id: 'catalog', label: 'Catalog', icon: 'Box', path: '/business/products/catalog' },
+      { id: 'inventory', label: 'Inventory', icon: 'ClipboardList', path: '/business/products/inventory' },
+    ]
+  },
+  { 
+    id: 'customers', 
+    label: 'Customers', 
+    icon: 'Users', 
+    path: '/business/customers',
+    children: [
+      { id: 'all', label: 'All Customers', icon: 'User', path: '/business/customers' },
+      { id: 'loyalty', label: 'Loyalty Program', icon: 'Award', path: '/business/customers/loyalty' },
+    ]
+  },
+  { 
+    id: 'reports', 
+    label: 'Reports', 
+    icon: 'PieChart', 
+    path: '/business/reports',
+    children: [
+      { id: 'analytics', label: 'Analytics', icon: 'TrendingUp', path: '/business/reports/analytics' },
+      { id: 'tax', label: 'Tax Reports', icon: 'Percent', path: '/business/reports/tax' },
+    ]
+  },
+  { 
+    id: 'settings', 
+    label: 'Settings', 
+    icon: 'Settings', 
+    path: '/business/settings',
+    children: [
+      { id: 'store', label: 'Store Settings', icon: 'Store', path: '/business/settings/store' },
+      { id: 'payment', label: 'Payment Methods', icon: 'CreditCard', path: '/business/settings/payment' },
+    ]
+  },
+];
+
+const NAV_BY_ROLE: Record<WorkspaceRole, SidebarNavItem[]> = {
+  admin: ADMIN_SIDEBAR_NAV,
+  business: BUSINESS_SIDEBAR_NAV,
+};
 
 // ============================================
 // MAIN APP LAYOUT COMPONENT
@@ -853,6 +932,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
 const AppLayout: React.FC = () => {
   // State
   const { theme, setTheme } = useTheme();
+  const { logout, user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -869,11 +949,20 @@ const AppLayout: React.FC = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const workspaceRole = useMemo(() => getWorkspaceSlug(user), [user]);
+  const workspaceLabel = useMemo(() => getWorkspaceLabel(user), [user]);
+  const activeSidebarNav = useMemo(
+    () =>
+      (user?.modules?.length
+        ? mapModulesToSidebarNav(user.modules)
+        : NAV_BY_ROLE[workspaceRole as WorkspaceRole] ?? NAV_BY_ROLE.admin),
+    [user?.modules, workspaceRole],
+  );
 
   // Memoized values
   const filteredModules = useMemo(() => {
-    if (!menuSearch.trim()) return SIDEBAR_NAV;
-    return SIDEBAR_NAV.filter(category => {
+    if (!menuSearch.trim()) return activeSidebarNav;
+    return activeSidebarNav.filter(category => {
       const categoryMatch = category.label.toLowerCase().includes(menuSearch.toLowerCase());
       if (categoryMatch) return true;
       if (category.children) {
@@ -888,16 +977,16 @@ const AppLayout: React.FC = () => {
         child.label.toLowerCase().includes(menuSearch.toLowerCase())
       )
     }));
-  }, [menuSearch]);
+  }, [activeSidebarNav, menuSearch]);
 
   const routeInfo = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean);
     const section = segments[segments.length - 1] || "dashboard";
     return {
-      category: "POS / Ecommerce",
+      category: workspaceLabel,
       title: toTitle(section)
     };
-  }, [location.pathname]);
+  }, [location.pathname, workspaceLabel]);
 
   // Handlers
   const handleNavigation = useCallback((path: string) => {
@@ -934,10 +1023,16 @@ const AppLayout: React.FC = () => {
     menuSearchInputRef.current?.focus();
   }, []);
 
-  const handleLogout = useCallback(() => {
-    toast.success('Logged out successfully');
-    navigate('/login');
-  }, [navigate]);
+  const handleLogout = useCallback(async () => {
+    try {
+      await logout();
+      toast.success('Logged out successfully');
+    } catch {
+      toast.error('Unable to log out right now.');
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  }, [logout, navigate]);
 
   // Effects
   useEffect(() => {
@@ -1018,8 +1113,6 @@ const AppLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-text transition-colors duration-300">
-      <Toaster position="top-right" />
-      
       {/* Mobile Menu Button */}
       <button
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -1044,7 +1137,7 @@ const AppLayout: React.FC = () => {
           <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'}`}>
             {!sidebarCollapsed ? (
               <>
-                <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleNavigation('/pos/dashboard')}>
+                <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleNavigation(`/${workspaceRole}/dashboard`)}>
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary font-bold text-lg text-white shadow-md">
                     P
                   </div>
@@ -1107,11 +1200,19 @@ const AppLayout: React.FC = () => {
               <>
                 <div className="flex items-center space-x-3 min-w-0">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary font-bold text-white shadow-md">
-                    JD
+                    {(user?.fullName ?? 'User')
+                      .split(' ')
+                      .map((part) => part[0])
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .join('')
+                      .toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold text-text">John Doe</div>
-                    <div className="truncate text-xs text-muted">Store Owner</div>
+                    <div className="truncate font-semibold text-text">{user?.fullName ?? 'John Doe'}</div>
+                    <div className="truncate text-xs text-muted">
+                      {user?.roles?.[0]?.name ?? workspaceLabel}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-1 flex-shrink-0">
@@ -1282,66 +1383,8 @@ const AppLayout: React.FC = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="p-4 md:p-6 space-y-6">
-          {/* Stats Cards */}
-          <StatsCards />
-
-          {/* Quick Actions */}
-          <div className="flex flex-wrap gap-3">
-            <button className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-white shadow-sm transition-colors hover:opacity-90">
-              <Plus size={18} />
-              New Order
-            </button>
-            <button className="inline-flex items-center gap-2 rounded-lg bg-success px-4 py-2.5 text-white shadow-sm transition-colors hover:opacity-90">
-              <ShoppingCart size={18} />
-              Open POS
-            </button>
-            <button className="inline-flex items-center gap-2 rounded-lg bg-surface-alt px-4 py-2.5 text-text transition-colors hover:opacity-90">
-              <Download size={18} />
-              Export Report
-            </button>
-            <button className="inline-flex items-center gap-2 rounded-lg bg-surface-alt px-4 py-2.5 text-text transition-colors hover:opacity-90">
-              <Printer size={18} />
-              Print Receipt
-            </button>
-          </div>
-
-          {/* Recent Orders */}
-          <RecentOrdersTable orders={MOCK_ORDERS} />
-
-          {/* Product Grid */}
-          <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-            <h3 className="mb-4 text-lg font-semibold text-text">Product Catalog</h3>
-            <ProductGrid products={MOCK_PRODUCTS} />
-          </div>
-
-          {/* Customer Loyalty Section */}
-          <div className="rounded-xl border border-border bg-surface p-6 shadow-sm">
-            <h3 className="mb-4 text-lg font-semibold text-text">Top Customers</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {MOCK_CUSTOMERS.map((customer) => (
-                <div key={customer.id} className="flex items-center gap-4 rounded-lg bg-surface-alt p-4">
-                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary font-bold text-lg text-white">
-                    {customer.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="truncate text-sm font-semibold text-text">{customer.name}</h4>
-                      <span className={`px-2 py-0.5 text-xs rounded-full text-white ${getTierColor(customer.tier)}`}>
-                        {customer.tier}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted">{customer.email}</p>
-                    <div className="mt-1 flex items-center gap-3 text-xs text-muted">
-                      <span>{customer.total_orders} orders</span>
-                      <span>{formatCurrency(customer.total_spent)}</span>
-                      <span>⭐ {customer.loyalty_points} pts</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        <main className="p-4 md:p-6">
+          <Outlet />
         </main>
       </div>
 
