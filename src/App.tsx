@@ -8,7 +8,7 @@ import Login from './pages/auth/login'
 import Register from './pages/auth/register'
 import PosLayout from './layouts/PosLayout'
 import { GuestOnlyRoute, ProtectedRoute } from './auth/RequireAuth'
-import Dashboard from './pages/dashboard'
+import Dashboard from './pages/Dashboard'
 import BusinessDashboard from './pages/business/BusinessDashboard'
 
 function App() {
@@ -26,11 +26,12 @@ function App() {
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/home" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/home" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>
 
-      <Route element={<ProtectedRoute />} requiredRoles="Business" >
+      <Route element={<ProtectedRoute requiredRoles="Business" />}>
         <Route element={<AppLayout />} >
           <Route path="/business" element={<BusinessDashboard />} />
         </Route>

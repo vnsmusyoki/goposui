@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
-import { useAuth } from './AuthProvider'
+import { useAuthStore } from './authStore'
 
 function FullScreenLoader({ label }: { label: string }) {
   return (
@@ -18,7 +18,8 @@ type ProtectedRouteProps = {
 }
 
 export function ProtectedRoute({ requiredRoles }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth()
+  const user = useAuthStore((state) => state.user)
+  const isLoading = useAuthStore((state) => state.isLoading)
   const location = useLocation()
   const required = Array.isArray(requiredRoles)
     ? requiredRoles
@@ -51,7 +52,8 @@ export function RequireAuth() {
 }
 
 export function GuestOnlyRoute() {
-  const { user, isLoading } = useAuth()
+  const user = useAuthStore((state) => state.user)
+  const isLoading = useAuthStore((state) => state.isLoading)
 
   if (isLoading) {
     return <FullScreenLoader label="Loading login..." />

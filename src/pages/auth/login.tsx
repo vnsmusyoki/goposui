@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ApiError } from '../../lib/api'
-import { useAuth } from '../../auth/AuthProvider'
+import { useAuthStore } from '../../auth/authStore'
 
 type FieldErrors = {
   email?: string
@@ -18,7 +18,8 @@ function isValidEmail(email: string) {
 function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { login, user } = useAuth()
+  const login = useAuthStore((state) => state.login)
+  const user = useAuthStore((state) => state.user)
   const demoEmail = import.meta.env.DEV ? 'admin@gmail.com' : ''
   const demoPassword = import.meta.env.DEV ? 'Password@123' : ''
   const [showPassword, setShowPassword] = useState(false)
@@ -205,8 +206,6 @@ function Login() {
           Need an account? Create one
         </Link>
       </div>
-
-      
     </div>
   )
 }

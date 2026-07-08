@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import * as Icons from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTheme } from '../theme/ThemeProvider';
-import { useAuth } from '../auth/AuthProvider';
+import { useAuthStore } from '../auth/authStore';
 import { getWorkspaceLabel, getWorkspaceSlug } from '../auth/workspace';
 import type { ModuleResponse } from '../auth/types';
 import {
@@ -932,7 +932,8 @@ const NAV_BY_ROLE: Record<WorkspaceRole, SidebarNavItem[]> = {
 const AppLayout: React.FC = () => {
   // State
   const { theme, setTheme } = useTheme();
-  const { logout, user } = useAuth();
+  const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);

@@ -60,7 +60,7 @@ import {
   Edit,
   Eye
 } from 'lucide-react';
-import { useAuth } from '../auth/AuthProvider';
+import { useAuthStore } from '../auth/authStore';
 
 // ============================================
 // TYPES
@@ -368,7 +368,7 @@ const getTierIcon = (tier: string) => {
 
 const PosLayout = () => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const logout = useAuthStore((state) => state.logout);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
