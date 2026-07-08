@@ -2,13 +2,14 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AuthLayout from './layouts/AuthLayout'
 import AppLayout from './layouts/AppLayout'
 import GuestLayout from './layouts/GuestLayout'
-import DashboardPage from './pages/dashboard'
 import LandingPage from './pages/LandingPage'
 import FogotPassword from './pages/auth/fogotpassword'
 import Login from './pages/auth/login'
 import Register from './pages/auth/register'
 import PosLayout from './layouts/PosLayout'
 import { GuestOnlyRoute, ProtectedRoute } from './auth/RequireAuth'
+import Dashboard from './pages/dashboard'
+import BusinessDashboard from './pages/business/BusinessDashboard'
 
 function App() {
   return (
@@ -25,9 +26,17 @@ function App() {
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/:workspace/dashboard" element={<DashboardPage />} />
+          <Route path="/home" element={<Dashboard />} />
         </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute />} requiredRoles="Business" >
+        <Route element={<AppLayout />} >
+          <Route path="/business" element={<BusinessDashboard />} />
+        </Route>
+      </Route>
+      
+      <Route element={<ProtectedRoute />}>
         <Route path="/pos" element={<PosLayout />}>
           <Route index element={<Navigate to="pos" replace />} />
           <Route path="pos" element={<PosLayout />} />

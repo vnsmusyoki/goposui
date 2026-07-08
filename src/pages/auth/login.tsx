@@ -19,8 +19,8 @@ function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const { login, user } = useAuth()
-  const demoEmail = import.meta.env.DEV ? 'admin@flowpos.local' : ''
-  const demoPassword = import.meta.env.DEV ? 'Password123!' : ''
+  const demoEmail = import.meta.env.DEV ? 'admin@gmail.com' : ''
+  const demoPassword = import.meta.env.DEV ? 'Password@123' : ''
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState(demoEmail)
   const [password, setPassword] = useState(demoPassword)
