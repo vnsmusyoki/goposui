@@ -40,7 +40,7 @@ export function ProtectedRoute({ requiredRoles }: ProtectedRouteProps) {
     const isAllowed = required.some((role) => roleCodes.includes(role.toLowerCase()))
 
     if (!isAllowed) {
-      return <Navigate to={`/dashboard`} replace />
+      return <Navigate to="/home" replace />
     }
   }
 
@@ -60,7 +60,7 @@ export function GuestOnlyRoute() {
   }
 
   if (user) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to="/home" replace />
   }
 
   return <Outlet />

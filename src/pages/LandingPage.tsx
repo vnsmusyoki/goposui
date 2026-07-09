@@ -65,37 +65,37 @@ const LandingPage = () => {
       icon: Zap,
       title: 'Lightning Fast Checkout',
       text: 'Process transactions in under 3 seconds with our optimized POS flow. Keep queues moving and customers happy.',
-      color: 'from-blue-500 to-cyan-400'
+      color: 'bg-primary/10 text-primary'
     },
     {
       icon: Database,
       title: 'Smart Inventory Control',
       text: 'Real-time stock tracking, automated reordering, and multi-location sync. Never miss a sale due to stockouts.',
-      color: 'from-purple-500 to-pink-400'
+      color: 'bg-secondary text-foreground'
     },
     {
       icon: Users,
       title: 'Team Management',
       text: 'Role-based permissions, shift scheduling, and performance analytics. Onboard new staff in minutes.',
-      color: 'from-green-500 to-emerald-400'
+      color: 'bg-success/10 text-success'
     },
     {
       icon: BarChart3,
       title: 'Advanced Analytics',
       text: 'Detailed insights into sales, customer behavior, and product performance. Make data-driven decisions.',
-      color: 'from-orange-500 to-red-400'
+      color: 'bg-warning/10 text-warning'
     },
     {
       icon: Globe,
       title: 'Multi-Channel Sales',
       text: 'Sell in-store, online, and through social media. Unified dashboard for all your sales channels.',
-      color: 'from-indigo-500 to-purple-400'
+      color: 'bg-accent text-foreground'
     },
     {
       icon: Shield,
       title: 'Enterprise Security',
       text: 'PCI compliant, end-to-end encryption, and real-time fraud detection. Your data is always safe.',
-      color: 'from-teal-500 to-cyan-400'
+      color: 'bg-info/10 text-info'
     },
   ];
 
@@ -175,7 +175,7 @@ const LandingPage = () => {
       ],
       popular: true,
       buttonText: 'Start Free Trial',
-      buttonColor: 'bg-gradient-to-r from-primary to-primary/80 text-white hover:shadow-lg'
+      buttonColor: 'bg-primary text-primary-foreground hover:bg-primary/90'
     },
     {
       name: 'Enterprise',
@@ -207,18 +207,18 @@ const LandingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-slate-950 text-gray-900 dark:text-white transition-colors duration-300 overflow-x-hidden">
+    <div className="min-h-screen bg-background text-foreground transition-colors duration-300 overflow-x-hidden">
       
       {/* ===== NAVBAR ===== */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-xl border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center space-x-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/70 rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
-                <span className="text-white font-bold text-xl">F</span>
+              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-black/10">
+                <span className="text-primary-foreground font-bold text-xl">F</span>
               </div>
-              <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+              <span className="text-xl font-bold text-primary">
                 FlowPOS
               </span>
             </div>
@@ -241,29 +241,25 @@ const LandingPage = () => {
 
             {/* Right Actions */}
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={toggleTheme}
-                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                aria-label="Toggle theme"
-              >
+              <button onClick={toggleTheme} className="p-2 rounded-lg bg-surface hover:bg-surface-alt transition-colors" aria-label="Toggle theme">
                 {resolvedTheme === 'dark' ? '☀️' : '🌙'}
               </button>
               <Link
                 to="/login"
-                className="hidden md:inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-semibold"
+                className="hidden md:inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-surface-alt transition-colors text-sm font-semibold"
               >
                 Login
               </Link>
               <Link
                 to="/register"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary to-primary/80 text-white rounded-lg hover:shadow-lg transition-all duration-300 text-sm font-semibold"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-300 text-sm font-semibold"
               >
                 Start Free Trial
                 <ArrowRight size={16} />
               </Link>
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="md:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="md:hidden p-2 rounded-lg hover:bg-surface-alt transition-colors"
               >
                 {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
@@ -272,21 +268,21 @@ const LandingPage = () => {
 
           {/* Mobile Menu */}
           {isMobileMenuOpen && (
-            <div className="md:hidden py-4 border-t border-gray-200 dark:border-gray-800">
+            <div className="md:hidden py-4 border-t border-border">
               <div className="flex flex-col space-y-3">
-                <a href="#features" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
-                <a href="#how-it-works" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">How It Works</a>
-                <a href="#testimonials" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Testimonials</a>
-                <a href="#pricing" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
+                <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
+                <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">How It Works</a>
+                <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
+                <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
                 <Link
                   to="/login"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-sm font-semibold"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-lg hover:bg-surface-alt transition-colors text-sm font-semibold"
                 >
                   Login
                 </Link>
                 <Link
                   to="/register"
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-primary to-primary/80 text-white rounded-lg hover:shadow-lg transition-all text-sm font-semibold"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-semibold"
                 >
                   Start Free Trial
                   <ArrowRight size={16} />
@@ -300,16 +296,14 @@ const LandingPage = () => {
       {/* ===== HERO SECTION ===== */}
       <section className="relative pt-32 pb-20 overflow-hidden">
         {/* Background Effects */}
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 dark:from-primary/10 dark:to-accent/10" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-br from-primary/20 to-accent/20 rounded-full blur-3xl opacity-30 dark:opacity-20" />
-        <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-gradient-to-tl from-primary/10 to-accent/10 rounded-full blur-3xl opacity-20 dark:opacity-10" />
+        <div className="absolute inset-0 bg-surface-alt/20" />
         
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Left Content */}
             <div className="space-y-8 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
               {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 dark:bg-primary/20 rounded-full border border-primary/20">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full border border-primary/20">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
@@ -318,7 +312,7 @@ const LandingPage = () => {
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
-                <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                <span className="text-primary">
                   One POS platform
                 </span>
                 <br />
@@ -330,16 +324,13 @@ const LandingPage = () => {
               </p>
 
               <div className="flex flex-wrap gap-4">
-                <Link
-                  to="/register"
-                  className="group inline-flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-primary to-accent text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary/30 transition-all duration-300"
-                >
+                <Link to="/register" className="group inline-flex items-center gap-2 px-6 py-3.5 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-colors duration-300">
                   Get started free
                   <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
                 <a
                   href="#features"
-                  className="inline-flex items-center gap-2 px-6 py-3.5 border border-gray-300 dark:border-gray-700 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  className="inline-flex items-center gap-2 px-6 py-3.5 border border-border rounded-xl font-semibold hover:bg-surface-alt transition-colors"
                 >
                   <Play size={18} />
                   See features
@@ -349,9 +340,9 @@ const LandingPage = () => {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-4 pt-4">
                 {highlights.map((item, index) => (
-                  <div key={index} className="bg-white dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+                  <div key={index} className="bg-surface rounded-xl p-4 border border-border">
                     <div className="text-2xl font-bold text-primary">{item.label}</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{item.text}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{item.text}</div>
                   </div>
                 ))}
               </div>
@@ -359,17 +350,17 @@ const LandingPage = () => {
 
             {/* Right Content - Dashboard Mockup */}
             <div className="relative animate-on-scroll opacity-0 translate-y-10 transition-all duration-700 delay-200">
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
+              <div className="bg-surface rounded-2xl border border-border shadow-2xl overflow-hidden">
                 {/* Dashboard Header */}
-                <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex items-center justify-between">
+                <div className="px-6 py-4 border-b border-border bg-surface-alt/50 flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <div className="w-3 h-3 rounded-full bg-red-500" />
                     <div className="w-3 h-3 rounded-full bg-yellow-500" />
                     <div className="w-3 h-3 rounded-full bg-green-500" />
                   </div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Today's Revenue</span>
-                    <span className="text-sm font-bold text-green-600 dark:text-green-400">+18.2%</span>
+                    <span className="text-xs text-muted-foreground">Today's Revenue</span>
+                    <span className="text-sm font-bold text-success">+18.2%</span>
                   </div>
                 </div>
 
@@ -377,22 +368,22 @@ const LandingPage = () => {
                 <div className="p-6 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">Total Sales</div>
+                      <div className="text-sm text-muted-foreground">Total Sales</div>
                       <div className="text-3xl font-bold">$14,250</div>
                     </div>
-                    <div className="bg-primary/10 dark:bg-primary/20 px-3 py-1 rounded-full text-sm font-semibold text-primary">
+                    <div className="bg-primary/10 px-3 py-1 rounded-full text-sm font-semibold text-primary">
                       Live
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
-                      <div className="text-sm text-gray-500 dark:text-gray-400">Orders</div>
+                    <div className="bg-background rounded-xl p-4">
+                      <div className="text-sm text-muted-foreground">Orders</div>
                       <div className="text-2xl font-bold">328</div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
-                      <div className="text-sm text-gray-500 dark:text-gray-400">Low Stock</div>
-                      <div className="text-2xl font-bold text-orange-500">04</div>
+                    <div className="bg-background rounded-xl p-4">
+                      <div className="text-sm text-muted-foreground">Low Stock</div>
+                      <div className="text-2xl font-bold text-warning">04</div>
                     </div>
                   </div>
 
@@ -402,7 +393,7 @@ const LandingPage = () => {
                       { name: 'Wireless Scanner', status: 'Low Stock', color: 'text-orange-500' },
                       { name: 'Receipt Paper Rolls', status: 'In Stock', color: 'text-green-500' },
                     ].map((item, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+                      <div key={i} className="flex items-center justify-between p-3 bg-background rounded-xl">
                         <span className="font-medium">{item.name}</span>
                         <span className={`text-sm ${item.color}`}>{item.status}</span>
                       </div>
@@ -412,7 +403,7 @@ const LandingPage = () => {
               </div>
 
               {/* Floating Badge */}
-              <div className="absolute -top-4 -right-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-lg animate-bounce">
+              <div className="absolute -top-4 -right-4 bg-primary text-primary-foreground px-4 py-2 rounded-full text-sm font-semibold shadow-lg animate-bounce">
                 ⚡ 3 second checkout
               </div>
             </div>
@@ -421,14 +412,14 @@ const LandingPage = () => {
       </section>
 
       {/* ===== TRUST BAR ===== */}
-      <section className="border-y border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 py-8">
+      <section className="border-y border-border bg-surface py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mb-6">Trusted by thousands of businesses worldwide</p>
+          <p className="text-center text-sm text-muted-foreground mb-6">Trusted by thousands of businesses worldwide</p>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8">
             {['Stripe', 'Shopify', 'Square', 'QuickBooks', 'Xero', 'WooCommerce'].map((brand) => (
               <div
                 key={brand}
-                className="flex items-center justify-center px-4 py-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 font-semibold text-sm hover:border-primary/50 transition-colors"
+                className="flex items-center justify-center px-4 py-3 bg-background rounded-lg border border-border text-muted-foreground font-semibold text-sm hover:border-primary/50 transition-colors"
               >
                 {brand}
               </div>
@@ -438,13 +429,13 @@ const LandingPage = () => {
       </section>
 
       {/* ===== FEATURES ===== */}
-      <section id="features" className="py-24 bg-white dark:bg-slate-950">
+      <section id="features" className="py-24 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
             <span className="text-sm font-semibold text-primary uppercase tracking-wider">Features</span>
             <h2 className="text-3xl sm:text-4xl font-bold mt-3">
               Everything you need to sell with{' '}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">confidence</span>
+              <span className="text-primary">confidence</span>
             </h2>
             <p className="text-gray-600 dark:text-gray-400 mt-4">
               Powerful features designed to help you manage your business efficiently and grow faster.
@@ -455,10 +446,10 @@ const LandingPage = () => {
             {featureCards.map((feature, index) => (
               <div
                 key={index}
-                className="group relative bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800 hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700"
+                className="group relative bg-surface rounded-2xl p-6 border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700"
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
-                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                <div className={`w-12 h-12 rounded-xl ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                   <feature.icon className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
@@ -470,13 +461,13 @@ const LandingPage = () => {
       </section>
 
       {/* ===== HOW IT WORKS ===== */}
-      <section id="how-it-works" className="py-24 bg-gray-50 dark:bg-gray-900/50">
+      <section id="how-it-works" className="py-24 bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
             <span className="text-sm font-semibold text-primary uppercase tracking-wider">How It Works</span>
             <h2 className="text-3xl sm:text-4xl font-bold mt-3">
               Get set up in{' '}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">three simple steps</span>
+              <span className="text-primary">three simple steps</span>
             </h2>
           </div>
 
@@ -484,13 +475,13 @@ const LandingPage = () => {
             {steps.map((step, index) => (
               <div
                 key={index}
-                className="relative bg-white dark:bg-gray-900 rounded-2xl p-8 border border-gray-200 dark:border-gray-800 hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700"
+                className="relative bg-background rounded-2xl p-8 border border-border hover:border-primary/50 hover:shadow-xl transition-all duration-300 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700"
                 style={{ transitionDelay: `${index * 150}ms` }}
               >
                 {index < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-1/2 -right-4 w-8 h-0.5 bg-gradient-to-r from-primary/50 to-primary" />
+                  <div className="hidden md:block absolute top-1/2 -right-4 w-8 h-0.5 bg-primary/50" />
                 )}
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                   <span className="text-2xl font-bold text-primary">{step.step}</span>
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{step.title}</h3>
@@ -502,13 +493,13 @@ const LandingPage = () => {
       </section>
 
       {/* ===== TESTIMONIALS ===== */}
-      <section id="testimonials" className="py-24 bg-white dark:bg-slate-950">
+      <section id="testimonials" className="py-24 bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
             <span className="text-sm font-semibold text-primary uppercase tracking-wider">Testimonials</span>
             <h2 className="text-3xl sm:text-4xl font-bold mt-3">
               What our{' '}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">customers say</span>
+              <span className="text-primary">customers say</span>
             </h2>
           </div>
 
@@ -520,11 +511,11 @@ const LandingPage = () => {
               >
                 {testimonials.map((testimonial, index) => (
                   <div key={index} className="w-full flex-shrink-0 px-4">
-                    <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-8 border border-gray-200 dark:border-gray-800">
+                    <div className="bg-surface rounded-2xl p-8 border border-border">
                       <div className="flex items-center gap-1 mb-4">{renderStars(testimonial.rating)}</div>
                       <p className="text-lg text-gray-700 dark:text-gray-300 mb-6">"{testimonial.quote}"</p>
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-bold text-lg">
+                        <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
                           {testimonial.avatar}
                         </div>
                         <div>
@@ -547,7 +538,7 @@ const LandingPage = () => {
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${
                     activeTestimonial === index
                       ? 'w-8 bg-primary'
-                      : 'bg-gray-300 dark:bg-gray-700 hover:bg-gray-400 dark:hover:bg-gray-600'
+                      : 'bg-border hover:bg-muted-foreground/40'
                   }`}
                 />
               ))}
@@ -557,13 +548,13 @@ const LandingPage = () => {
       </section>
 
       {/* ===== PRICING ===== */}
-      <section id="pricing" className="py-24 bg-gray-50 dark:bg-gray-900/50">
+      <section id="pricing" className="py-24 bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16 animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
             <span className="text-sm font-semibold text-primary uppercase tracking-wider">Pricing</span>
             <h2 className="text-3xl sm:text-4xl font-bold mt-3">
               Choose the plan that{' '}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">fits your business</span>
+              <span className="text-primary">fits your business</span>
             </h2>
           </div>
 
@@ -571,15 +562,15 @@ const LandingPage = () => {
             {pricingPlans.map((plan, index) => (
               <div
                 key={index}
-                className={`relative bg-white dark:bg-gray-900 rounded-2xl border ${
+                className={`relative bg-background rounded-2xl border ${
                   plan.popular
-                    ? 'border-primary shadow-2xl shadow-primary/20 scale-105'
-                    : 'border-gray-200 dark:border-gray-800'
+                    ? 'border-primary shadow-2xl shadow-black/10 scale-105'
+                    : 'border-border'
                 } p-8 transition-all duration-300 hover:shadow-xl animate-on-scroll opacity-0 translate-y-10 transition-all duration-700`}
                 style={{ transitionDelay: `${index * 100}ms` }}
               >
                 {plan.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-primary to-accent text-white px-4 py-1 rounded-full text-sm font-semibold">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-sm font-semibold">
                     Most Popular
                   </div>
                 )}
@@ -587,15 +578,15 @@ const LandingPage = () => {
                   <h3 className="text-xl font-semibold">{plan.name}</h3>
                   <div className="mt-2 flex items-baseline">
                     <span className="text-4xl font-bold">{plan.price}</span>
-                    {plan.price !== 'Custom' && <span className="text-gray-500 dark:text-gray-400 ml-1">/mo</span>}
+                    {plan.price !== 'Custom' && <span className="text-muted-foreground ml-1">/mo</span>}
                   </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{plan.description}</p>
+                  <p className="text-sm text-muted-foreground mt-2">{plan.description}</p>
                 </div>
                 <ul className="space-y-3 mb-8">
                   {plan.features.map((feature, idx) => (
                     <li key={idx} className="flex items-center gap-2 text-sm">
                       <Check size={16} className="text-primary flex-shrink-0" />
-                      <span className="text-gray-600 dark:text-gray-300">{feature}</span>
+                      <span className="text-muted-foreground">{feature}</span>
                     </li>
                   ))}
                 </ul>
@@ -621,7 +612,7 @@ const LandingPage = () => {
       </section>
 
       {/* ===== CTA SECTION ===== */}
-      <section className="py-24 bg-gradient-to-br from-primary/10 via-accent/5 to-primary/10 dark:from-primary/20 dark:via-accent/10 dark:to-primary/20">
+      <section className="py-24 bg-surface">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <div className="animate-on-scroll opacity-0 translate-y-10 transition-all duration-700">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
@@ -631,21 +622,18 @@ const LandingPage = () => {
               Join thousands of merchants who trust FlowPOS to run their business smoothly.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link
-                to="/register"
-                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-primary to-accent text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-primary/30 transition-all duration-300"
-              >
+              <Link to="/register" className="inline-flex items-center gap-2 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold hover:bg-primary/90 transition-colors duration-300">
                 Start Free Trial
                 <ArrowRight size={18} />
               </Link>
               <a
                 href="#features"
-                className="inline-flex items-center gap-2 px-8 py-4 border border-gray-300 dark:border-gray-700 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                className="inline-flex items-center gap-2 px-8 py-4 border border-border rounded-xl font-semibold hover:bg-surface-alt transition-colors"
               >
                 Learn More
               </a>
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-6">
+            <p className="text-sm text-muted-foreground mt-6">
               No credit card required • Free 14-day trial • Cancel anytime
             </p>
           </div>
@@ -653,25 +641,25 @@ const LandingPage = () => {
       </section>
 
       {/* ===== FOOTER ===== */}
-      <footer className="bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-gray-800 py-12">
+      <footer className="bg-background border-t border-border py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-4 gap-8">
             <div>
               <div className="flex items-center space-x-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/70 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">F</span>
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <span className="text-primary-foreground font-bold text-sm">F</span>
                 </div>
-                <span className="text-lg font-bold bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                <span className="text-lg font-bold text-primary">
                   FlowPOS
                 </span>
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
+              <p className="text-sm text-muted-foreground max-w-xs">
                 Modern POS platform for growing retail teams. Sell smarter, faster, better.
               </p>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#features" className="hover:text-primary transition-colors">Features</a></li>
                 <li><a href="#pricing" className="hover:text-primary transition-colors">Pricing</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Integrations</a></li>
@@ -680,7 +668,7 @@ const LandingPage = () => {
             </div>
             <div>
               <h4 className="font-semibold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#" className="hover:text-primary transition-colors">About</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Blog</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Careers</a></li>
@@ -689,7 +677,7 @@ const LandingPage = () => {
             </div>
             <div>
               <h4 className="font-semibold mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li><a href="#" className="hover:text-primary transition-colors">Help Center</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Documentation</a></li>
                 <li><a href="#" className="hover:text-primary transition-colors">Status</a></li>
@@ -697,7 +685,7 @@ const LandingPage = () => {
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-200 dark:border-gray-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               © 2026 FlowPOS. All rights reserved.
             </p>

@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Select, { type SingleValue, type StylesConfig } from 'react-select';
 import {
   Search, 
   Plus,
@@ -62,6 +64,82 @@ type FeaturedBadgeProps = {
 type CategoryIconProps = {
   iconName: string;
   className?: string;
+};
+
+type SelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+const selectStyles: StylesConfig<any, false> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 40,
+    borderRadius: 8,
+    borderColor: 'hsl(var(--border))',
+    backgroundColor: 'hsl(var(--background))',
+    boxShadow: state.isFocused ? '0 0 0 2px hsl(var(--primary) / 0.2)' : 'none',
+    ':hover': {
+      borderColor: 'hsl(var(--primary))',
+    },
+  }),
+  valueContainer: (base) => ({
+    ...base,
+    paddingTop: 0,
+    paddingBottom: 0,
+  }),
+  input: (base) => ({
+    ...base,
+    color: 'hsl(var(--foreground))',
+  }),
+  singleValue: (base) => ({
+    ...base,
+    color: 'hsl(var(--foreground))',
+  }),
+  placeholder: (base) => ({
+    ...base,
+    color: 'hsl(var(--muted-foreground))',
+  }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 50,
+    backgroundColor: 'hsl(var(--background))',
+    border: '1px solid hsl(var(--border))',
+    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.12)',
+  }),
+  menuList: (base) => ({
+    ...base,
+    padding: 4,
+  }),
+  option: (base, state) => ({
+    ...base,
+    borderRadius: 6,
+    backgroundColor: state.isSelected
+      ? 'hsl(var(--primary))'
+      : state.isFocused
+        ? 'hsl(var(--muted))'
+        : 'transparent',
+    color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
+    ':active': {
+      backgroundColor: 'hsl(var(--primary) / 0.9)',
+      color: 'hsl(var(--primary-foreground))',
+    },
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    color: 'hsl(var(--muted-foreground))',
+  }),
+  dropdownIndicator: (base) => ({
+    ...base,
+    color: 'hsl(var(--muted-foreground))',
+    ':hover': {
+      color: 'hsl(var(--foreground))',
+    },
+  }),
+  indicatorSeparator: (base) => ({
+    ...base,
+    backgroundColor: 'hsl(var(--border))',
+  }),
 };
 
 // ===================== MOCK DATA =====================
@@ -310,6 +388,19 @@ const mockCategories: CategoryItem[] = [
   }
 ];
 
+const statusOptions: SelectOption<'all' | 'active' | 'inactive'>[] = [
+  { value: 'all', label: 'All Status' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+];
+
+const sortOptions: SelectOption<'name' | 'productCount' | 'createdAt' | 'sortOrder'>[] = [
+  { value: 'name', label: 'Sort by Name' },
+  { value: 'productCount', label: 'Sort by Products' },
+  { value: 'createdAt', label: 'Sort by Created' },
+  { value: 'sortOrder', label: 'Sort by Order' },
+];
+
 // ===================== HELPER COMPONENTS =====================
 
 // Status Badge Component
@@ -391,6 +482,15 @@ export default function BusinessCategoriesList() {
   const shellCard = 'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
   const primaryButton = 'rounded-lg bg-primary text-primary-foreground hover:bg-primary/90';
   const mutedIconButton = 'rounded hover:bg-surface-alt transition-colors text-muted-foreground';
+  const navigate = useNavigate();
+  const selectedStatusOption = useMemo(
+    () => statusOptions.find((option) => option.value === filterStatus) ?? statusOptions[0],
+    [filterStatus],
+  );
+  const selectedSortOption = useMemo(
+    () => sortOptions.find((option) => option.value === sortBy) ?? sortOptions[0],
+    [sortBy],
+  );
 
   // Toggle expand/collapse
   const toggleExpand = (categoryId: string) => {
@@ -713,7 +813,19 @@ export default function BusinessCategoriesList() {
           <p className="text-sm text-muted-foreground">Manage your product categories and sub-categories</p>
         </div>
         <div className="flex items-center gap-3">
-          <button className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}>
+          <button
+            type="button"
+            onClick={() => navigate('/inventory/subcategories')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}
+          >
+            <Plus className="w-4 h-4" />
+            New Sub  Category
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/inventory/categories/create')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}
+          >
             <Plus className="w-4 h-4" />
             New Category
           </button>
@@ -768,27 +880,36 @@ export default function BusinessCategoriesList() {
             </div>
 
           {/* Filters */}
-          <div className="flex items-center gap-2">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'inactive')}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+          <div className="flex min-w-[340px] items-center gap-2">
+            <div className="min-w-[150px]">
+              <Select<SelectOption<'all' | 'active' | 'inactive'>, false>
+                instanceId="category-status-select"
+                isSearchable
+                isClearable={false}
+                options={statusOptions}
+                value={selectedStatusOption}
+                onChange={(option) => {
+                  if (option) setFilterStatus(option.value);
+                }}
+                styles={selectStyles}
+                placeholder="All Status"
+              />
+            </div>
 
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as 'name' | 'productCount' | 'createdAt' | 'sortOrder')}
-              className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="name">Sort by Name</option>
-              <option value="productCount">Sort by Products</option>
-              <option value="createdAt">Sort by Created</option>
-              <option value="sortOrder">Sort by Order</option>
-            </select>
+            <div className="min-w-[180px]">
+              <Select<SelectOption<'name' | 'productCount' | 'createdAt' | 'sortOrder'>, false>
+                instanceId="category-sort-select"
+                isSearchable
+                isClearable={false}
+                options={sortOptions}
+                value={selectedSortOption}
+                onChange={(option) => {
+                  if (option) setSortBy(option.value);
+                }}
+                styles={selectStyles}
+                placeholder="Sort by"
+              />
+            </div>
 
             <button
               onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}

@@ -1,9 +1,8 @@
 import { Shield, Store, UserRound } from 'lucide-react'
 import { useMemo } from 'react'
-import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../auth/authStore'
-import { getWorkspaceLandingPath } from '../auth/workspace'
 import AdminDashboard from './admin/AdminDashboard'
+import BusinessDashboard from './business/BusinessDashboard'
 
 function Dashboard() {
   const user = useAuthStore((state) => state.user)
@@ -28,7 +27,7 @@ function Dashboard() {
   }
 
   if (workspaceRole === 'business') {
-    return <Navigate to={getWorkspaceLandingPath(user)} replace />
+    return <BusinessDashboard />
   }
 
   return (

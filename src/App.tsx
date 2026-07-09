@@ -11,6 +11,9 @@ import { GuestOnlyRoute, ProtectedRoute } from './auth/RequireAuth'
 import Dashboard from './pages/Dashboard'
 import BusinessDashboard from './pages/business/BusinessDashboard'
 import BusinessCategoriesList from './pages/business/categories/BusinessCategoriesList'
+import CreateBusinessCategory from './pages/business/categories/CreateBusinessCategory'
+import BusinessSubCategoryList from './pages/business/subcategories/BusinessSubCategoryList'
+import CreateSubCategory from './pages/business/subcategories/CreateSubCategory'
 
 function App() {
   return (
@@ -34,11 +37,18 @@ function App() {
 
       <Route element={<ProtectedRoute requiredRoles="Business" />}>
         <Route element={<AppLayout />} >
-          <Route path="/business" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/inventory/categories" element={<BusinessCategoriesList />} /> 
+          <Route path="/business" element={<Navigate to="/home" replace />} />
+
+          {/* CATEGORIES  */}
+          <Route path="/inventory/categories" element={<BusinessCategoriesList />} />
+          <Route path="/inventory/categories/create" element={<CreateBusinessCategory />} />
+
+          {/* SUB CATEGORIES */}
+          <Route path="/inventory/subcategories" element={<BusinessSubCategoryList />} />
+          <Route path="/inventory/subcategories/create" element={<CreateSubCategory />} />
         </Route>
       </Route>
-      
+
       <Route element={<ProtectedRoute />}>
         <Route path="/pos" element={<PosLayout />}>
           <Route index element={<Navigate to="pos" replace />} />

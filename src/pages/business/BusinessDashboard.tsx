@@ -491,35 +491,35 @@ const KPICard = ({ title, value, prevValue, icon: Icon, suffix = '', prefix = ''
   const change = prevValue ? ((value - prevValue) / prevValue * 100) : 0;
   const isPositive = change >= 0;
   const colorClasses: Record<KPICardColor, string> = {
-    blue: 'bg-blue-50 border-gray-200',
-    green: 'bg-green-50 border-gray-200',
-    purple: 'bg-purple-50 border-gray-200',
-    orange: 'bg-orange-50 border-gray-200',
-    red: 'bg-red-50 border-gray-200',
-    teal: 'bg-teal-50 border-gray-200',
-    indigo: 'bg-indigo-50 border-gray-200',
+    blue: 'bg-surface border-border',
+    green: 'bg-success/10 border-border',
+    purple: 'bg-secondary border-border',
+    orange: 'bg-warning/10 border-border',
+    red: 'bg-destructive/10 border-border',
+    teal: 'bg-info/10 border-border',
+    indigo: 'bg-accent border-border',
   };
   
   return (
     <div className={`rounded-xl border p-4 ${colorClasses[color]} transition-all hover:shadow-md`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-600">{title}</p>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
           <p className="text-2xl font-bold mt-1">
             {prefix}{typeof value === 'number' ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : value}{suffix}
           </p>
         </div>
-        <div className="p-2 bg-white rounded-lg shadow-sm">
-          <Icon className="w-5 h-5 text-gray-700" />
+        <div className="rounded-lg bg-background p-2 shadow-sm">
+          <Icon className="w-5 h-5 text-foreground" />
         </div>
       </div>
       {trend && prevValue !== undefined && (
         <div className="flex items-center mt-2 text-xs">
-          <span className={`flex items-center ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+          <span className={`flex items-center ${isPositive ? 'text-success' : 'text-destructive'}`}>
             {isPositive ? <ArrowUp className="w-3 h-3 mr-0.5" /> : <ArrowDown className="w-3 h-3 mr-0.5" />}
             {Math.abs(change).toFixed(1)}%
           </span>
-          <span className="text-gray-500 ml-2">vs yesterday</span>
+          <span className="ml-2 text-muted-foreground">vs yesterday</span>
         </div>
       )}
     </div>
@@ -577,7 +577,7 @@ const ProgressRing = ({ value, max = 100, color = 'blue', size = 80, label = '' 
           <span className="text-xl font-bold">{Math.round(percentage)}%</span>
         </div>
       </div>
-      {label && <span className="text-xs text-gray-500 mt-1">{label}</span>}
+      {label && <span className="mt-1 text-xs text-muted-foreground">{label}</span>}
     </div>
   );
 };
@@ -835,21 +835,21 @@ export default function BusinessDashboard() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 font-sans">
+    <div className="min-h-screen bg-background font-sans text-foreground">
       {/* ===== HEADER ===== */}
       <div className="flex flex-wrap items-center justify-between  gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Business POS Dashboard</h1>
-          <p className="text-sm text-gray-500">General Shop & Cereals Section • Real-time Analytics</p>
+          <h1 className="text-2xl font-bold text-foreground">Business POS Dashboard</h1>
+          <p className="text-sm text-muted-foreground">General Shop & Cereals Section • Real-time Analytics</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex bg-white rounded-lg shadow-sm border border-gray-200 p-1">
+          <div className="flex rounded-lg border border-border bg-surface p-1 shadow-sm">
             {['today', 'week', 'month'].map((t) => (
               <button
                 key={t}
                 onClick={() => setTimeframe(t)}
                 className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  timeframe === t ? 'bg-green-600 text-white' : 'text-gray-600 hover:bg-green-50'
+                  timeframe === t ? 'bg-primary text-primary-foreground' : 'text-foreground/70 hover:bg-surface-alt'
                 }`}
               >
                 {t.charAt(0).toUpperCase() + t.slice(1)}
@@ -858,67 +858,67 @@ export default function BusinessDashboard() {
           </div>
           <button 
             onClick={() => setShowAllSections(!showAllSections)}
-            className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-green-50 transition-colors"
+            className="p-2 rounded-lg border border-border bg-surface shadow-sm hover:bg-surface-alt transition-colors"
           >
-            <Layout className="w-5 h-5 text-green-700" />
+            <Layout className="w-5 h-5 text-primary" />
           </button>
-          <button className="p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-green-50 transition-colors relative">
-            <Bell className="w-5 h-5 text-green-700" />
+          <button className="relative rounded-lg border border-border bg-surface p-2 shadow-sm transition-colors hover:bg-surface-alt">
+            <Bell className="w-5 h-5 text-primary" />
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
               {mockData.alerts.length + mockData.anomalies.length}
             </span>
           </button>
           <button 
             onClick={handleRefresh}
-            className={`p-2 bg-white rounded-lg shadow-sm border border-gray-200 hover:bg-green-50 transition-all ${refreshing ? 'rotate-180' : ''}`}
+            className={`p-2 rounded-lg border border-border bg-surface shadow-sm transition-all hover:bg-surface-alt ${refreshing ? 'rotate-180' : ''}`}
           >
-            <RefreshCw className={`w-5 h-5 text-green-700 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-5 h-5 text-primary ${refreshing ? 'animate-spin' : ''}`} />
           </button>
-          <button className="p-2 bg-green-600 text-white rounded-lg shadow-sm hover:bg-green-700 transition-colors">
+          <button className="p-2 bg-primary text-primary-foreground rounded-lg shadow-sm hover:bg-primary/90 transition-colors">
             <Download className="w-5 h-5" />
           </button>
         </div>
       </div>
 
       {/* ===== Q: BUSINESS HEALTH SCORE ===== */}
-      <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
+      <div className="rounded-xl border border-border bg-surface p-6 shadow-lg mb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-6">
-            <div className="bg-white/20 backdrop-blur-sm rounded-full p-4">
-              <GaugeIcon className="w-10 h-10 text-white" />
+            <div className="rounded-full bg-primary/10 p-4">
+              <GaugeIcon className="w-10 h-10 text-primary" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">Business Health Score</h2>
-              <p className="text-green-100 text-sm">Overall performance across all metrics</p>
+              <h2 className="text-2xl font-bold text-foreground">Business Health Score</h2>
+              <p className="text-sm text-muted-foreground">Overall performance across all metrics</p>
             </div>
           </div>
           <div className="flex items-center gap-8">
             <div className="text-center">
-              <p className="text-4xl font-bold text-white">{healthScore}</p>
-              <p className="text-green-100 text-xs">/ 100</p>
+              <p className="text-4xl font-bold text-foreground">{healthScore}</p>
+              <p className="text-xs text-muted-foreground">/ 100</p>
             </div>
-            <div className="h-12 w-px bg-white/30" />
+            <div className="h-12 w-px bg-border" />
             <div className="grid grid-cols-3 gap-2 text-center">
               <div>
-                <p className="text-white font-bold text-sm">{mockData.riskScore}</p>
-                <p className="text-green-100 text-[10px]">Risk Score</p>
+                <p className="text-sm font-bold text-foreground">{mockData.riskScore}</p>
+                <p className="text-[10px] text-muted-foreground">Risk Score</p>
               </div>
               <div>
-                <p className="text-white font-bold text-sm">Top {mockData.benchmarks}%</p>
-                <p className="text-green-100 text-[10px]">Benchmark</p>
+                <p className="text-sm font-bold text-foreground">Top {mockData.benchmarks}%</p>
+                <p className="text-[10px] text-muted-foreground">Benchmark</p>
               </div>
               <div>
-                <p className="text-white font-bold text-sm">✓</p>
-                <p className="text-green-100 text-[10px]">Status</p>
+                <p className="text-sm font-bold text-foreground">✓</p>
+                <p className="text-[10px] text-muted-foreground">Status</p>
               </div>
             </div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 md:grid-cols-6 gap-2">
           {healthBreakdownEntries.map(([key, value]) => (
-            <div key={key} className="bg-white/10 backdrop-blur-sm rounded-lg p-2 text-center border border-white/10">
-              <p className="text-white font-semibold text-sm">{value}%</p>
-              <p className="text-green-100 text-[10px] capitalize">{key}</p>
+            <div key={key} className="rounded-lg border border-border bg-background p-2 text-center">
+              <p className="text-sm font-semibold text-foreground">{value}%</p>
+              <p className="text-[10px] capitalize text-muted-foreground">{key}</p>
             </div>
           ))}
         </div>
@@ -977,35 +977,35 @@ export default function BusinessDashboard() {
 
       {/* ===== B: EXECUTIVE SNAPSHOT ===== */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Sales Growth</p>
-          <p className="text-2xl font-bold text-green-600">{businessHighlights.salesGrowth.toFixed(1)}%</p>
-          <p className="text-xs text-gray-500">Compared with the previous period</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Sales Growth</p>
+          <p className="text-2xl font-bold text-success">{businessHighlights.salesGrowth.toFixed(1)}%</p>
+          <p className="text-xs text-muted-foreground">Compared with the previous period</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Transaction Momentum</p>
-          <p className="text-2xl font-bold text-emerald-600">{businessHighlights.transactionGrowth.toFixed(1)}%</p>
-          <p className="text-xs text-gray-500">Average basket value ${businessHighlights.avgBasketValue.toFixed(2)}</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Transaction Momentum</p>
+          <p className="text-2xl font-bold text-primary">{businessHighlights.transactionGrowth.toFixed(1)}%</p>
+          <p className="text-xs text-muted-foreground">Average basket value ${businessHighlights.avgBasketValue.toFixed(2)}</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Customer Retention</p>
-          <p className="text-2xl font-bold text-green-700">{businessHighlights.retentionRate}%</p>
-          <p className="text-xs text-gray-500">Returning customers across the business</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Customer Retention</p>
+          <p className="text-2xl font-bold text-primary">{businessHighlights.retentionRate}%</p>
+          <p className="text-xs text-muted-foreground">Returning customers across the business</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Operational Pressure</p>
-          <p className="text-2xl font-bold text-amber-600">{businessHighlights.operationalPressure}</p>
-          <p className="text-xs text-gray-500">{businessHighlights.inventoryWarnings} inventory risks and live alerts</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Operational Pressure</p>
+          <p className="text-2xl font-bold text-warning">{businessHighlights.operationalPressure}</p>
+          <p className="text-xs text-muted-foreground">{businessHighlights.inventoryWarnings} inventory risks and live alerts</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Top Category</p>
-          <p className="text-2xl font-bold text-gray-800 capitalize">{businessHighlights.topCategory[0]}</p>
-          <p className="text-xs text-gray-500">{businessHighlights.topCategory[1]}% of category sales</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Top Category</p>
+          <p className="text-2xl font-bold capitalize text-foreground">{businessHighlights.topCategory[0]}</p>
+          <p className="text-xs text-muted-foreground">{businessHighlights.topCategory[1]}% of category sales</p>
         </div>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <p className="text-sm text-gray-500">Forecast Lift</p>
-          <p className="text-2xl font-bold text-green-600">{businessHighlights.forecastLift > 0 ? '+' : ''}{businessHighlights.forecastLift}%</p>
-          <p className="text-xs text-gray-500">Predicted vs actual demand trend</p>
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <p className="text-sm text-muted-foreground">Forecast Lift</p>
+          <p className="text-2xl font-bold text-success">{businessHighlights.forecastLift > 0 ? '+' : ''}{businessHighlights.forecastLift}%</p>
+          <p className="text-xs text-muted-foreground">Predicted vs actual demand trend</p>
         </div>
       </div>
 

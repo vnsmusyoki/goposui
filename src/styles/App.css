@@ -272,21 +272,6 @@
   }
 }
 
-.hero-radial {
-  background:
-    radial-gradient(circle at top left, color-mix(in srgb, var(--app-primary) 18%, transparent), transparent 35%),
-    radial-gradient(circle at top right, color-mix(in srgb, var(--app-accent) 15%, transparent), transparent 30%);
-}
-
-.hero-card-gradient {
-  background:
-    linear-gradient(
-      160deg,
-      color-mix(in srgb, var(--app-primary) 12%, transparent),
-      color-mix(in srgb, var(--app-accent) 10%, transparent)
-    );
-}
-
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
 }
