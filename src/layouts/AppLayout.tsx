@@ -1384,7 +1384,7 @@ const AppLayout: React.FC = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="p-4 md:p-6">
+        <main className="w-full py-0 px-3 sm:px-4 lg:px-4">
           <Outlet />
         </main>
       </div>
