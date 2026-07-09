@@ -10,6 +10,7 @@ import PosLayout from './layouts/PosLayout'
 import { GuestOnlyRoute, ProtectedRoute } from './auth/RequireAuth'
 import Dashboard from './pages/Dashboard'
 import BusinessDashboard from './pages/business/BusinessDashboard'
+import BusinessCategoriesList from './pages/business/categories/BusinessCategoriesList'
 
 function App() {
   return (
@@ -26,15 +27,15 @@ function App() {
       </Route>
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
+          <Route path="/home" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/home" element={<Navigate to="/dashboard" replace />} />
         </Route>
       </Route>
 
       <Route element={<ProtectedRoute requiredRoles="Business" />}>
         <Route element={<AppLayout />} >
           <Route path="/business" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/business/*" element={<BusinessDashboard />} />
+          <Route path="/inventory/categories" element={<BusinessCategoriesList />} /> 
         </Route>
       </Route>
       

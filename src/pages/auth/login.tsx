@@ -1,10 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { ApiError } from '../../lib/api'
 import { useAuthStore } from '../../auth/authStore'
-import { getWorkspaceLandingPath } from '../../auth/workspace'
 
 type FieldErrors = {
   email?: string
@@ -18,7 +17,6 @@ function isValidEmail(email: string) {
 
 function Login() {
   const navigate = useNavigate()
-  const location = useLocation()
   const login = useAuthStore((state) => state.login)
   const user = useAuthStore((state) => state.user)
   const demoEmail = import.meta.env.DEV ? 'admin@gmail.com' : ''
@@ -30,15 +28,13 @@ function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<FieldErrors>({})
 
-  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/dashboard'
-  const getPostLoginPath = (currentUser = user) =>
-    from !== '/dashboard' ? from : getWorkspaceLandingPath(currentUser)
+  const getPostLoginPath = () => '/home'
 
   useEffect(() => {
     if (user) {
-      navigate(getPostLoginPath(user), { replace: true })
+      navigate(getPostLoginPath(), { replace: true })
     }
-  }, [user, from, navigate])
+  }, [user, navigate])
 
   const validate = () => {
     const nextErrors: FieldErrors = {}

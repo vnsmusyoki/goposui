@@ -27,6 +27,17 @@ export type ModuleResponse = {
   children?: SubmoduleResponse[]
 }
 
+export type NavigationItemResponse = {
+  name: string
+  icon?: string
+  path: string
+}
+
+export type NavigationGroupResponse = {
+  name: string
+  items: NavigationItemResponse[]
+}
+
 export type AuthUser = {
   id: string
   email: string
@@ -36,6 +47,10 @@ export type AuthUser = {
   modules: ModuleResponse[]
   landingPath?: string
   activeBusinessId?: string
+}
+
+export type ModulesResponse = {
+  modules: NavigationGroupResponse[]
 }
 
 export type LoginPayload = {

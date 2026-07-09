@@ -26,6 +26,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     ...init,
     headers,
     credentials: 'include',
+    cache: 'no-store',
   })
 
   const contentType = response.headers.get('content-type') ?? ''

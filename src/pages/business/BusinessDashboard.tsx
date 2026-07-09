@@ -590,16 +590,20 @@ const LineChart = ({ data, labels, height = 200, colors = ['#3B82F6', '#EF4444']
   colors?: string[];
 }) => {
   const maxValue = Math.max(...data.flat()) * 1.1;
+  const width = 100;
+  const innerHeight = height - 20;
   
   return (
     <div className="relative" style={{ height }}>
-      <svg width="100%" height={height} className="overflow-visible">
+      <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
         {data.map((dataset, di) => (
           <polyline
             key={di}
-            points={dataset.map((val, i) => 
-              `${(i / (dataset.length - 1)) * 100}% ${height - (val / maxValue) * (height - 20)}`
-            ).join(' ')}
+            points={dataset.map((val, i) => {
+              const x = (dataset.length === 1 ? 0.5 : i / (dataset.length - 1)) * width;
+              const y = height - (val / maxValue) * innerHeight;
+              return `${x},${y}`;
+            }).join(' ')}
             fill="none"
             stroke={colors[di % colors.length]}
             strokeWidth="2"
@@ -610,8 +614,8 @@ const LineChart = ({ data, labels, height = 200, colors = ['#3B82F6', '#EF4444']
           dataset.map((val, i) => (
             <circle
               key={`${di}-${i}`}
-              cx={`${(i / (dataset.length - 1)) * 100}%`}
-              cy={`${height - (val / maxValue) * (height - 20)}`}
+              cx={(dataset.length === 1 ? 0.5 : i / (dataset.length - 1)) * width}
+              cy={height - (val / maxValue) * innerHeight}
               r="3"
               fill={colors[di % colors.length]}
               className="transition-all duration-500"
