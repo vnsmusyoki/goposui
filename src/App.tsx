@@ -33,7 +33,8 @@ function App() {
 
       <Route element={<ProtectedRoute requiredRoles="Business" />}>
         <Route element={<AppLayout />} >
-          <Route path="/business" element={<BusinessDashboard />} />
+          <Route path="/business" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/business/*" element={<BusinessDashboard />} />
         </Route>
       </Route>
       

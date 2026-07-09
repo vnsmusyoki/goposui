@@ -4,6 +4,7 @@ import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from 'lucid
 import toast from 'react-hot-toast'
 import { ApiError } from '../../lib/api'
 import { useAuthStore } from '../../auth/authStore'
+import { getWorkspaceLandingPath } from '../../auth/workspace'
 
 type FieldErrors = {
   email?: string
@@ -30,10 +31,12 @@ function Login() {
   const [errors, setErrors] = useState<FieldErrors>({})
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/dashboard'
+  const getPostLoginPath = (currentUser = user) =>
+    from !== '/dashboard' ? from : getWorkspaceLandingPath(currentUser)
 
   useEffect(() => {
     if (user) {
-      navigate(from, { replace: true })
+      navigate(getPostLoginPath(user), { replace: true })
     }
   }, [user, from, navigate])
 
@@ -75,7 +78,7 @@ function Login() {
         rememberMe,
       })
       toast.success('Signed in successfully.')
-      navigate(from, { replace: true })
+      navigate(getPostLoginPath(), { replace: true })
     } catch (error) {
       const apiError = error as ApiError
       const responseErrors =

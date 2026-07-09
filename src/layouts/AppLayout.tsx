@@ -788,17 +788,28 @@ interface SidebarNavItem {
 
 type WorkspaceRole = 'admin' | 'business';
 
-const mapModulesToSidebarNav = (modules: ModuleResponse[]): SidebarNavItem[] => {
+const mapModulesToSidebarNav = (modules: ModuleResponse[], workspaceRole: WorkspaceRole): SidebarNavItem[] => {
+  const normalizePath = (path: string) => {
+    const trimmedPath = path.trim()
+    if (!trimmedPath) {
+      return `/${workspaceRole}/dashboard`
+    }
+    if (trimmedPath.startsWith('/admin') || trimmedPath.startsWith('/business')) {
+      return trimmedPath
+    }
+    return `/${workspaceRole}${trimmedPath.startsWith('/') ? '' : '/'}${trimmedPath}`
+  };
+
   return modules.map((module) => ({
     id: module.code,
     label: module.name,
     icon: module.icon || 'LayoutDashboard',
-    path: module.path,
+    path: normalizePath(module.path),
     children: module.children?.map((child) => ({
       id: child.code,
       label: child.name,
       icon: child.icon || 'LayoutDashboard',
-      path: child.path,
+      path: normalizePath(child.path),
     })),
   }));
 };
@@ -955,7 +966,7 @@ const AppLayout: React.FC = () => {
   const activeSidebarNav = useMemo(
     () =>
       (user?.modules?.length
-        ? mapModulesToSidebarNav(user.modules)
+        ? mapModulesToSidebarNav(user.modules, workspaceRole as WorkspaceRole)
         : NAV_BY_ROLE[workspaceRole as WorkspaceRole] ?? NAV_BY_ROLE.admin),
     [user?.modules, workspaceRole],
   );

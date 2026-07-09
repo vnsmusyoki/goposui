@@ -34,6 +34,8 @@ export type AuthUser = {
   isActive: boolean
   roles: RoleResponse[]
   modules: ModuleResponse[]
+  landingPath?: string
+  activeBusinessId?: string
 }
 
 export type LoginPayload = {
