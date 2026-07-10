@@ -24,87 +24,12 @@ function AuthLayout() {
               </div>
             </Link>
 
-            <div className="max-w-lg space-y-5">
-              <span className="inline-flex items-center gap-2 rounded-full border border-primary-300/20 bg-primary-400/10 px-4 py-1 text-sm text-primary-100">
-                <Sparkles className="h-4 w-4" />
-                Welcome back to your POS workspace
-              </span>
-              <h1 className="text-4xl font-semibold leading-tight text-text">
-                Access your dashboard, manage inventory, process orders, and grow your business in
-                one unified platform.
-              </h1>
-              <p className="text-base leading-7 text-neutral-400">
-                Built for retail teams that need a secure, fast login flow with a focused workspace
-                on the other side.
-              </p>
-            </div>
+             
           </div>
 
           <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-              {[
-                { label: 'Active Stores', value: '50,000+' },
-                { label: 'Transactions', value: '2.4M+' },
-                { label: 'Uptime', value: '99.99%' },
-              ].map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-border bg-surface p-4">
-                  <div className="text-2xl font-bold text-text">{stat.value}</div>
-                  <div className="mt-1 text-xs text-neutral-400">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { icon: Users, label: 'Staff Login', color: 'from-primary-500 to-info-500' },
-                { icon: Building2, label: 'Multi-Location', color: 'from-primary-600 to-primary-400' },
-                { icon: CreditCard, label: 'Secure Payments', color: 'from-success-500 to-success-100' },
-                { icon: Globe, label: 'Global Access', color: 'from-warning-500 to-danger-500' },
-              ].map((action) => (
-                <div
-                  key={action.label}
-                  className="group rounded-xl border border-border bg-surface p-4 transition hover:border-primary/50 hover:bg-surface-alt"
-                >
-                  <div className={`mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br ${action.color} transition group-hover:scale-110`}>
-                    <action.icon className="h-5 w-5 text-white" />
-                  </div>
-                  <div className="text-sm font-medium text-text">{action.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-xl border border-border bg-surface p-6">
-              <div className="mb-3 flex items-center gap-1">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <Star key={index} className="h-3.5 w-3.5 fill-current text-warning-500" />
-                ))}
-                <span className="ml-2 text-sm text-neutral-400">(4.9/5)</span>
-              </div>
-              <div className="space-y-2">
-                <p className="italic text-neutral-400">
-                  "Processing sales has never been faster. Our team loves the intuitive interface."
-                </p>
-                <div>
-                  <p className="text-sm font-medium text-primary">Sarah Johnson</p>
-                  <p className="text-xs text-neutral-400">Store Manager</p>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center gap-1.5">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <span
-                    key={index}
-                    className={`h-1.5 rounded-full ${index === 0 ? 'w-6 bg-primary' : 'w-1.5 bg-border'}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-3xl border border-border bg-surface p-5 backdrop-blur">
-              <Clock className="h-4 w-4 text-primary" />
-              <span className="text-sm text-neutral-400">
-                Secure access, faster checkout flow, and a private workspace for your team.
-              </span>
-            </div>
+            
+ 
           </div>
         </aside>
 
