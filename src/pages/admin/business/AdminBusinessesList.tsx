@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import Select, { type StylesConfig } from 'react-select';
 import {
   Search,
@@ -7,8 +8,6 @@ import {
   Edit,
   Trash2,
   ChevronDown,
-  Grid,
-  List,
   Building2,
   Users,
   CreditCard,
@@ -18,7 +17,6 @@ import {
   Eye,
   ArrowUp,
   ArrowDown,
-  MoreVertical,
   RefreshCw,
   Download as DownloadIcon,
   Home,
@@ -48,6 +46,7 @@ import {
   Copy as CopyIcon,
   Filter,
 } from 'lucide-react';
+import { useAdminBusinesses } from '@/hooks/admin/businesses/useAdminBusinesses';
 
 // ===================== TYPES =====================
 
@@ -65,9 +64,9 @@ type Business = {
   website: string;
   address: string;
   industry: string;
-  status: BusinessStatus;
-  tier: BusinessTier;
-  subscriptionStatus: 'paid' | 'overdue' | 'trialing' | 'canceled';
+  status: string;
+  tier: string;
+  subscriptionStatus: string;
   totalUsers: number;
   totalLocations: number;
   totalProducts: number;
@@ -83,15 +82,15 @@ type Business = {
 };
 
 type StatusBadgeProps = {
-  status: BusinessStatus;
+  status: string;
 };
 
 type SubscriptionStatusBadgeProps = {
-  status: Business['subscriptionStatus'];
+  status: string;
 };
 
 type TierBadgeProps = {
-  tier: BusinessTier;
+  tier: string;
 };
 
 type SelectOption<T extends string> = {
@@ -208,7 +207,7 @@ const StatusBadge = ({ status }: StatusBadgeProps) => {
     onboarding: { icon: Sparkles, className: 'bg-info/10 text-info' },
   };
 
-  const { icon: Icon, className } = config[status];
+  const { icon: Icon, className } = config[status as keyof typeof config] ?? config.pending;
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
       <Icon className="w-3 h-3 mr-1" />
@@ -225,7 +224,7 @@ const SubscriptionStatusBadge = ({ status }: SubscriptionStatusBadgeProps) => {
     canceled: { icon: XCircle, className: 'bg-muted text-muted-foreground' },
   };
 
-  const { icon: Icon, className } = config[status];
+  const { icon: Icon, className } = config[status as keyof typeof config] ?? config.trialing;
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${className}`}>
       <Icon className="w-3 h-3 mr-1" />
@@ -243,7 +242,7 @@ const TierBadge = ({ tier }: TierBadgeProps) => {
   };
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config[tier]}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${config[tier as keyof typeof config] ?? config.free}`}>
       {tier.charAt(0).toUpperCase() + tier.slice(1)}
     </span>
   );
@@ -256,180 +255,21 @@ export default function AdminBusinessesList() {
   const shellCard = 'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
   const primaryButton = 'rounded-lg bg-primary text-primary-foreground hover:bg-primary/90';
   const mutedIconButton = 'rounded hover:bg-surface-alt transition-colors text-muted-foreground';
+  const { businesses, isLoading, isSyncing, error, fetchBusinesses, syncBusinessModules } = useAdminBusinesses();
 
   // State
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<'name' | 'createdAt' | 'totalUsers' | 'monthlyRevenue' | 'lastActive'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'suspended' | 'pending' | 'onboarding'>('all');
   const [filterTier, setFilterTier] = useState<'all' | 'free' | 'pro' | 'enterprise' | 'premium'>('all');
-  const [selectedTab, setSelectedTab] = useState<'businesses' | 'insights'>('businesses');
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
+  const [selectedTab, setSelectedTab] = useState<'businesses' | 'insights'>('insights');
+  const [expandedBusinessId, setExpandedBusinessId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [businessToDelete, setBusinessToDelete] = useState<Business | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Mock data
-  const [businesses, setBusinesses] = useState<Business[]>([
-    {
-      id: '1',
-      name: 'TechCorp Solutions',
-      legalName: 'TechCorp Solutions Inc.',
-      ein: '12-3456789',
-      email: 'admin@techcorp.com',
-      phone: '+1 (555) 123-4567',
-      website: 'techcorp.com',
-      address: '123 Tech Blvd, Silicon Valley, CA 94025',
-      industry: 'Technology',
-      status: 'active',
-      tier: 'enterprise',
-      subscriptionStatus: 'paid',
-      totalUsers: 245,
-      totalLocations: 12,
-      totalProducts: 1560,
-      totalOrders: 23450,
-      monthlyRevenue: 45000,
-      createdAt: '2024-01-15T10:00:00Z',
-      lastActive: '2026-07-11T08:30:00Z',
-      isVerified: true,
-      isFeatured: true,
-      flags: ['high-growth', 'strategic'],
-      supportTickets: 3,
-      apiCalls: 1250000,
-    },
-    {
-      id: '2',
-      name: 'HealthPlus Medical',
-      legalName: 'HealthPlus Medical Group',
-      ein: '98-7654321',
-      email: 'info@healthplus.com',
-      phone: '+1 (555) 987-6543',
-      website: 'healthplus.com',
-      address: '456 Medical Center Dr, Boston, MA 02115',
-      industry: 'Healthcare',
-      status: 'active',
-      tier: 'premium',
-      subscriptionStatus: 'paid',
-      totalUsers: 87,
-      totalLocations: 5,
-      totalProducts: 320,
-      totalOrders: 8900,
-      monthlyRevenue: 28000,
-      createdAt: '2024-03-20T14:30:00Z',
-      lastActive: '2026-07-10T15:45:00Z',
-      isVerified: true,
-      isFeatured: false,
-      flags: [],
-      supportTickets: 1,
-      apiCalls: 450000,
-    },
-    {
-      id: '3',
-      name: 'RetailHub',
-      legalName: 'RetailHub International',
-      ein: '34-5678901',
-      email: 'contact@retailhub.com',
-      phone: '+1 (555) 456-7890',
-      website: 'retailhub.com',
-      address: '789 Commerce St, Chicago, IL 60607',
-      industry: 'Retail',
-      status: 'suspended',
-      tier: 'pro',
-      subscriptionStatus: 'overdue',
-      totalUsers: 34,
-      totalLocations: 3,
-      totalProducts: 450,
-      totalOrders: 5600,
-      monthlyRevenue: 12000,
-      createdAt: '2024-06-01T09:00:00Z',
-      lastActive: '2026-06-28T11:20:00Z',
-      isVerified: false,
-      isFeatured: false,
-      flags: ['payment-failed'],
-      supportTickets: 12,
-      apiCalls: 89000,
-    },
-    {
-      id: '4',
-      name: 'EduLearn Academy',
-      legalName: 'EduLearn Academy LLC',
-      ein: '56-7890123',
-      email: 'support@edulearn.com',
-      phone: '+1 (555) 234-5678',
-      website: 'edulearn.com',
-      address: '101 Education Way, Austin, TX 78701',
-      industry: 'Education',
-      status: 'pending',
-      tier: 'free',
-      subscriptionStatus: 'trialing',
-      totalUsers: 12,
-      totalLocations: 1,
-      totalProducts: 45,
-      totalOrders: 230,
-      monthlyRevenue: 0,
-      createdAt: '2026-07-01T16:00:00Z',
-      lastActive: '2026-07-09T09:15:00Z',
-      isVerified: false,
-      isFeatured: false,
-      flags: ['new-business'],
-      supportTickets: 0,
-      apiCalls: 12000,
-    },
-    {
-      id: '5',
-      name: 'FinSecure Banking',
-      legalName: 'FinSecure Financial Services',
-      ein: '78-9012345',
-      email: 'admin@finsecure.com',
-      phone: '+1 (555) 345-6789',
-      website: 'finsecure.com',
-      address: '202 Finance Plaza, New York, NY 10005',
-      industry: 'Finance',
-      status: 'active',
-      tier: 'enterprise',
-      subscriptionStatus: 'paid',
-      totalUsers: 412,
-      totalLocations: 18,
-      totalProducts: 2340,
-      totalOrders: 45600,
-      monthlyRevenue: 89000,
-      createdAt: '2023-11-01T08:00:00Z',
-      lastActive: '2026-07-11T07:00:00Z',
-      isVerified: true,
-      isFeatured: true,
-      flags: ['enterprise', 'high-value'],
-      supportTickets: 5,
-      apiCalls: 3200000,
-    },
-    {
-      id: '6',
-      name: 'GreenEco Energy',
-      legalName: 'GreenEco Energy Solutions',
-      ein: '90-1234567',
-      email: 'info@greeneco.com',
-      phone: '+1 (555) 567-8901',
-      website: 'greeneco.com',
-      address: '303 Renewable Way, Portland, OR 97201',
-      industry: 'Energy',
-      status: 'onboarding',
-      tier: 'premium',
-      subscriptionStatus: 'trialing',
-      totalUsers: 8,
-      totalLocations: 2,
-      totalProducts: 120,
-      totalOrders: 340,
-      monthlyRevenue: 5000,
-      createdAt: '2026-06-15T11:00:00Z',
-      lastActive: '2026-07-08T13:30:00Z',
-      isVerified: false,
-      isFeatured: false,
-      flags: ['onboarding'],
-      supportTickets: 8,
-      apiCalls: 25000,
-    },
-  ]);
+  useEffect(() => {
+    void fetchBusinesses();
+  }, [fetchBusinesses]);
 
   // Compute stats
   const stats = useMemo(() => ({
@@ -444,18 +284,62 @@ export default function AdminBusinessesList() {
     flaggedBusinesses: businesses.filter(b => b.flags && b.flags.length > 0).length,
   }), [businesses]);
 
-  // Health metrics
-  const healthMetrics = useMemo(() => ({
-    healthScore: 78, // Mock score out of 100
-    growthRate: 12.5, // % growth
-    churnRate: 3.2, // % churn
-    avgSupportTickets: businesses.reduce((sum, b) => sum + b.supportTickets, 0) / businesses.length,
-    avgApiCalls: businesses.reduce((sum, b) => sum + b.apiCalls, 0) / businesses.length,
-    activeBusinesses: businesses.filter(b => b.status === 'active').length,
-    inactiveBusinesses: businesses.filter(b => b.status !== 'active').length,
-    revenueGrowth: 8.7,
-    riskAlerts: businesses.filter(b => b.flags && b.flags.length > 0).length,
-  }), [businesses]);
+  const analytics = useMemo(() => {
+    const total = businesses.length || 1;
+    const activeCount = businesses.filter((business) => business.status === 'active').length;
+    const onboardingCount = businesses.filter((business) => business.status === 'onboarding').length;
+    const verifiedCount = businesses.filter((business) => business.isVerified).length;
+    const riskCount = businesses.filter((business) => business.flags && business.flags.length > 0).length;
+    const avgSupportTickets = businesses.reduce((sum, business) => sum + business.supportTickets, 0) / total;
+    const avgApiCalls = businesses.reduce((sum, business) => sum + business.apiCalls, 0) / total;
+    const avgUsers = businesses.reduce((sum, business) => sum + business.totalUsers, 0) / total;
+    const avgLocations = businesses.reduce((sum, business) => sum + business.totalLocations, 0) / total;
+    const healthScore = Math.round(
+      (activeCount / total) * 45 +
+      (verifiedCount / total) * 35 +
+      (1 - Math.min(riskCount / total, 1)) * 20,
+    );
+
+    const monthLabels = new Map<string, number>();
+    businesses.forEach((business) => {
+      const key = new Date(business.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      monthLabels.set(key, (monthLabels.get(key) ?? 0) + 1);
+    });
+
+    const monthlyBusinessGrowth = Array.from(monthLabels.entries()).map(([label, value]) => ({ label, value }));
+    const tierDistribution = ['free', 'pro', 'premium', 'enterprise'].map((tier) => ({
+      tier,
+      count: businesses.filter((business) => business.tier === tier).length,
+    }));
+    const industryDistribution = Object.values(
+      businesses.reduce<Record<string, { label: string; count: number }>>((acc, business) => {
+        const key = (business.industry || 'Unknown').trim() || 'Unknown';
+        if (!acc[key]) {
+          acc[key] = { label: key, count: 0 };
+        }
+        acc[key].count += 1;
+        return acc;
+      }, {}),
+    )
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    return {
+      healthScore: Math.min(Math.max(healthScore, 0), 100),
+      activeRate: Math.round((activeCount / total) * 100),
+      onboardingRate: Math.round((onboardingCount / total) * 100),
+      avgSupportTickets,
+      avgApiCalls,
+      avgUsers,
+      avgLocations,
+      riskCount,
+      monthlyBusinessGrowth,
+      tierDistribution,
+      industryDistribution,
+    };
+  }, [businesses]);
+
+  const healthMetrics = analytics;
 
   // Filtered and sorted businesses
   const filteredBusinesses = useMemo(() => {
@@ -509,10 +393,7 @@ export default function AdminBusinessesList() {
 
   // Handlers
   const handleRefresh = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
+    void fetchBusinesses();
   };
 
   const selectedStatusOption = useMemo(
@@ -530,83 +411,15 @@ export default function AdminBusinessesList() {
     [sortBy],
   );
 
-  // Render Grid View
-  const renderGridView = () => {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredBusinesses.map(business => (
-          <div
-            key={business.id}
-            className={`${shellCard} p-4 hover:shadow-md transition-shadow cursor-pointer group`}
-            onClick={() => setSelectedBusiness(business)}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="rounded-lg bg-primary/10 p-3 transition-colors group-hover:bg-primary/15">
-                <Building2 className="w-6 h-6 text-primary" />
-              </div>
-              <button className="rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-alt">
-                <MoreVertical className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-
-            <h3 className="mb-1 font-medium text-foreground truncate">
-              {business.name}
-            </h3>
-            <p className="mb-2 text-sm text-muted-foreground truncate">
-              {business.industry}
-            </p>
-
-            <div className="flex flex-wrap gap-2 mb-3">
-              <StatusBadge status={business.status} />
-              <TierBadge tier={business.tier} />
-              {business.isFeatured && (
-                <span className="inline-flex items-center rounded-full bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Featured
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground border-t border-border pt-3">
-              <div className="flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                <span>{business.totalUsers} users</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Store className="w-3 h-3" />
-                <span>{business.totalLocations} locations</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Package className="w-3 h-3" />
-                <span>{business.totalProducts} products</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <DollarSign className="w-3 h-3" />
-                <span>${business.monthlyRevenue.toLocaleString()}/mo</span>
-              </div>
-            </div>
-
-            {business.flags && business.flags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1 border-t border-border pt-2">
-                {business.flags.map((flag, idx) => (
-                  <span key={idx} className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
-                    <AlertCircle className="w-3 h-3 mr-1" />
-                    {flag.replace('-', ' ')}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
+  const toggleBusinessSummary = (businessId: string) => {
+    setExpandedBusinessId((currentId) => (currentId === businessId ? null : businessId));
   };
 
   // Render List View
   const renderListView = () => {
     return (
-      <div className={`${shellCard} overflow-hidden`}>
-        <table className="min-w-full divide-y divide-border">
+      <div className={`${shellCard} overflow-x-auto`}>
+        <table className="min-w-[980px] w-full divide-y divide-border">
           <thead className="bg-surface-alt/60">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -637,55 +450,151 @@ export default function AdminBusinessesList() {
           </thead>
           <tbody className="divide-y divide-border">
             {filteredBusinesses.map(business => (
-              <tr
-                key={business.id}
-                className="cursor-pointer transition-colors hover:bg-surface-alt/70"
-                onClick={() => setSelectedBusiness(business)}
-              >
-                <td className="px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{business.name}</p>
-                    <p className="text-xs text-muted-foreground">{business.email}</p>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  {business.industry}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={business.status} />
-                </td>
-                <td className="px-4 py-3">
-                  <TierBadge tier={business.tier} />
-                </td>
-                <td className="px-4 py-3 text-sm text-foreground">
-                  {business.totalUsers}
-                </td>
-                <td className="px-4 py-3 text-sm text-foreground">
-                  ${business.monthlyRevenue.toLocaleString()}
-                </td>
-                <td className="px-4 py-3">
-                  <SubscriptionStatusBadge status={business.subscriptionStatus} />
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className={`p-1.5 ${mutedIconButton} hover:text-destructive`}
-                      onClick={() => {
-                        setBusinessToDelete(business);
-                        setShowDeleteModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
+              <React.Fragment key={business.id}>
+                <tr
+                  className={`cursor-pointer transition-colors hover:bg-surface-alt/70 ${
+                    expandedBusinessId === business.id ? 'bg-surface-alt/40' : ''
+                  }`}
+                  onClick={() => toggleBusinessSummary(business.id)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-3">
+                      <button
+                        type="button"
+                        className="mt-0.5 rounded p-1 text-muted-foreground transition-colors hover:bg-surface-alt hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleBusinessSummary(business.id);
+                        }}
+                      >
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            expandedBusinessId === business.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{business.name}</p>
+                        <p className="text-xs text-muted-foreground">{business.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {business.industry}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={business.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <TierBadge tier={business.tier} />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-foreground">
+                    {business.totalUsers}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-foreground">
+                    ${business.monthlyRevenue.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <SubscriptionStatusBadge status={business.subscriptionStatus} />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className={`p-1.5 ${mutedIconButton} hover:text-primary`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/business-management/details/${business.id}`);
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        className={`p-1.5 ${mutedIconButton} hover:text-destructive`}
+                        onClick={() => {
+                          setBusinessToDelete(business);
+                          setShowDeleteModal(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {expandedBusinessId === business.id && (
+                  <tr className="bg-surface-alt/25">
+                    <td colSpan={8} className="px-4 py-4">
+                      <div className="grid gap-4 rounded-xl border border-border bg-background/80 p-4 md:grid-cols-2 xl:grid-cols-4">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Legal name</p>
+                          <p className="mt-1 text-sm font-medium text-foreground">{business.legalName}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Business ID / EIN</p>
+                          <p className="mt-1 text-sm font-medium text-foreground">{business.ein}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Primary contact</p>
+                          <p className="mt-1 text-sm font-medium text-foreground">{business.phone}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Last active</p>
+                          <p className="mt-1 text-sm font-medium text-foreground">{new Date(business.lastActive).toLocaleString()}</p>
+                        </div>
+                        <div className="md:col-span-2 xl:col-span-4">
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Quick summary</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {business.name} is a {business.status} business in the {business.industry} category with {business.totalUsers} users,
+                            {` ${business.totalLocations} locations, and ${business.totalProducts} products.`}
+                          </p>
+                        </div>
+                        <div className="md:col-span-2 xl:col-span-4 flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-alt"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const response = await syncBusinessModules(business.id);
+                              if (response) {
+                                toast.success(
+                                  `${response.message} ${response.inserted_modules} modules and ${response.inserted_submodules} submodules added.`,
+                                );
+                              }
+                            }}
+                            disabled={isSyncing}
+                          >
+                            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'Syncing...' : 'Sync Modules'}
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-alt"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/business-management/details/${business.id}`);
+                            }}
+                          >
+                            View details
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedBusinessId(null);
+                            }}
+                          >
+                            Collapse
+                          </button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -717,44 +626,40 @@ export default function AdminBusinessesList() {
           <div className={`${shellCard} p-4`}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Growth Rate</p>
-                <p className="text-2xl font-bold text-foreground">{healthMetrics.growthRate}%</p>
+                <p className="text-sm text-muted-foreground">Active Rate</p>
+                <p className="text-2xl font-bold text-foreground">{healthMetrics.activeRate}%</p>
               </div>
               <div className="rounded-lg bg-success/10 p-3">
                 <TrendingUp className="w-6 h-6 text-success" />
               </div>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">+2.3% from last month</p>
+            <p className="mt-2 text-xs text-muted-foreground">{stats.active} of {stats.total || 1} businesses are active</p>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Average Users</p>
+                <p className="text-2xl font-bold text-foreground">{healthMetrics.avgUsers.toFixed(1)}</p>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-3">
+                <Users className="w-6 h-6 text-primary" />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Per business across the live dataset</p>
           </div>
 
           <div className={`${shellCard} p-4`}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Risk Alerts</p>
-                <p className="text-2xl font-bold text-destructive">{healthMetrics.riskAlerts}</p>
+                <p className="text-2xl font-bold text-destructive">{healthMetrics.riskCount}</p>
               </div>
               <div className="rounded-lg bg-destructive/10 p-3">
                 <AlertTriangle className="w-6 h-6 text-destructive" />
               </div>
             </div>
-            <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-destructive">⚠ {businesses.filter(b => b.subscriptionStatus === 'overdue').length} overdue payments</span>
-            </div>
-          </div>
-
-          <div className={`${shellCard} p-4`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Avg Support Tickets</p>
-                <p className="text-2xl font-bold text-foreground">{healthMetrics.avgSupportTickets.toFixed(1)}</p>
-              </div>
-              <div className="rounded-lg bg-info/10 p-3">
-                <FileText className="w-6 h-6 text-info" />
-              </div>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {healthMetrics.avgSupportTickets > 3 ? '⚠ Above average' : '✓ Below average'}
-            </p>
+            <p className="mt-2 text-xs text-muted-foreground">{stats.flaggedBusinesses} businesses need attention</p>
           </div>
         </div>
 
@@ -772,7 +677,7 @@ export default function AdminBusinessesList() {
                   <span className="font-medium text-foreground">{stats.active}</span>
                 </div>
                 <div className="mt-1 h-2 bg-muted rounded-full">
-                  <div className="h-2 bg-success rounded-full" style={{ width: `${(stats.active / stats.total) * 100}%` }} />
+                  <div className="h-2 bg-success rounded-full" style={{ width: `${stats.total ? (stats.active / stats.total) * 100 : 0}%` }} />
                 </div>
               </div>
               <div>
@@ -781,7 +686,7 @@ export default function AdminBusinessesList() {
                   <span className="font-medium text-foreground">{stats.suspended}</span>
                 </div>
                 <div className="mt-1 h-2 bg-muted rounded-full">
-                  <div className="h-2 bg-destructive rounded-full" style={{ width: `${(stats.suspended / stats.total) * 100}%` }} />
+                  <div className="h-2 bg-destructive rounded-full" style={{ width: `${stats.total ? (stats.suspended / stats.total) * 100 : 0}%` }} />
                 </div>
               </div>
               <div>
@@ -790,7 +695,7 @@ export default function AdminBusinessesList() {
                   <span className="font-medium text-foreground">{stats.pending}</span>
                 </div>
                 <div className="mt-1 h-2 bg-muted rounded-full">
-                  <div className="h-2 bg-warning rounded-full" style={{ width: `${(stats.pending / stats.total) * 100}%` }} />
+                  <div className="h-2 bg-warning rounded-full" style={{ width: `${stats.total ? (stats.pending / stats.total) * 100 : 0}%` }} />
                 </div>
               </div>
               <div>
@@ -799,7 +704,7 @@ export default function AdminBusinessesList() {
                   <span className="font-medium text-foreground">{stats.onboarding}</span>
                 </div>
                 <div className="mt-1 h-2 bg-muted rounded-full">
-                  <div className="h-2 bg-info rounded-full" style={{ width: `${(stats.onboarding / stats.total) * 100}%` }} />
+                  <div className="h-2 bg-info rounded-full" style={{ width: `${stats.total ? (stats.onboarding / stats.total) * 100 : 0}%` }} />
                 </div>
               </div>
             </div>
@@ -808,7 +713,7 @@ export default function AdminBusinessesList() {
           <div className={`${shellCard} p-4`}>
             <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-primary" />
-              Revenue Overview
+              Subscription & Tier Mix
             </h3>
             <div className="space-y-3">
               <div className="flex justify-between">
@@ -817,11 +722,11 @@ export default function AdminBusinessesList() {
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Average Revenue per Business</span>
-                <span className="text-sm font-medium text-foreground">${(stats.totalRevenue / stats.total).toLocaleString()}</span>
+                <span className="text-sm font-medium text-foreground">${(stats.total ? stats.totalRevenue / stats.total : 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">Revenue Growth</span>
-                <span className="text-sm font-medium text-success">{healthMetrics.revenueGrowth}%</span>
+                <span className="text-sm text-muted-foreground">Average Stores per Business</span>
+                <span className="text-sm font-medium text-success">{healthMetrics.avgLocations.toFixed(1)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Overdue Payments</span>
@@ -832,24 +737,77 @@ export default function AdminBusinessesList() {
                   <span className="text-muted-foreground">Tier Distribution</span>
                 </div>
                 <div className="mt-2 space-y-1">
-                  {['free', 'pro', 'premium', 'enterprise'].map(tier => {
-                    const count = businesses.filter(b => b.tier === tier).length;
-                    const percentage = (count / stats.total) * 100;
+                  {analytics.tierDistribution.map((tierItem) => {
+                    const percentage = stats.total ? (tierItem.count / stats.total) * 100 : 0;
                     return (
-                      <div key={tier} className="flex items-center gap-2">
-                        <TierBadge tier={tier as BusinessTier} />
+                      <div key={tierItem.tier} className="flex items-center gap-2">
+                        <TierBadge tier={tierItem.tier as BusinessTier} />
                         <div className="flex-1 h-1.5 bg-muted rounded-full">
                           <div 
                             className="h-1.5 bg-primary rounded-full" 
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
-                        <span className="text-xs text-muted-foreground">{count}</span>
+                        <span className="text-xs text-muted-foreground">{tierItem.count}</span>
                       </div>
                     );
                   })}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className={`${shellCard} p-4`}>
+            <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
+              <LayoutDashboard className="w-4 h-4 text-primary" />
+              Business Growth by Month
+            </h3>
+            <div className="space-y-3">
+              {analytics.monthlyBusinessGrowth.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No business records yet.</p>
+              ) : (
+                analytics.monthlyBusinessGrowth.map((point) => (
+                  <div key={point.label} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{point.label}</span>
+                      <span className="font-medium text-foreground">{point.value}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-gradient-to-r from-primary to-primary/70"
+                        style={{ width: `${Math.max(8, point.value * 20)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
+              <PieChart className="w-4 h-4 text-primary" />
+              Top Industries
+            </h3>
+            <div className="space-y-3">
+              {analytics.industryDistribution.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No industries to display yet.</p>
+              ) : (
+                analytics.industryDistribution.map((item) => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <div className="min-w-32 text-sm text-muted-foreground">{item.label}</div>
+                    <div className="flex-1 h-2 rounded-full bg-muted">
+                      <div
+                        className="h-2 rounded-full bg-info"
+                        style={{ width: `${(item.count / (analytics.industryDistribution[0]?.count || 1)) * 100}%` }}
+                      />
+                    </div>
+                    <div className="w-8 text-right text-xs font-medium text-foreground">{item.count}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -861,10 +819,10 @@ export default function AdminBusinessesList() {
             Businesses Needing Attention
           </h3>
           <div className="space-y-3">
-            {businesses.filter(b => b.flags && b.flags.length > 0).length === 0 ? (
-              <p className="text-sm text-muted-foreground">✅ All businesses are healthy</p>
+            {businesses.filter((business) => business.flags && business.flags.length > 0).length === 0 ? (
+              <p className="text-sm text-muted-foreground">All businesses are healthy</p>
             ) : (
-              businesses.filter(b => b.flags && b.flags.length > 0).map(business => (
+              businesses.filter((business) => business.flags && business.flags.length > 0).map((business) => (
                 <div key={business.id} className="flex items-center justify-between p-3 bg-warning/5 rounded-lg border border-warning/20">
                   <div>
                     <p className="text-sm font-medium text-foreground">{business.name}</p>
@@ -925,28 +883,39 @@ export default function AdminBusinessesList() {
 
       {/* ===== TABS ===== */}
       <div className="mb-6">
-        <div className="flex items-center gap-1 rounded-lg bg-surface-alt p-1 w-fit">
-          <button
-            onClick={() => setSelectedTab('businesses')}
-            className={`flex items-center gap-2 px-4 py-2 rounded transition-all ${
-              selectedTab === 'businesses'
-                ? 'bg-background shadow text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            All Businesses
-          </button>
+        <div className="flex w-fit items-end gap-6 border-b border-border">
+        
           <button
             onClick={() => setSelectedTab('insights')}
-            className={`flex items-center gap-2 px-4 py-2 rounded transition-all ${
+            className={`relative flex items-center gap-2 px-1 py-3 text-sm font-medium transition-colors ${
               selectedTab === 'insights'
-                ? 'bg-background shadow text-primary'
+                ? 'text-primary'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             <BarChart3 className="w-4 h-4" />
             Health & Insights
+            <span
+              className={`absolute inset-x-0 -bottom-[1px] h-[3px] rounded-full transition-colors ${
+                selectedTab === 'insights' ? 'bg-primary' : 'bg-transparent'
+              }`}
+            />
+          </button>
+            <button
+            onClick={() => setSelectedTab('businesses')}
+            className={`relative flex items-center gap-2 px-1 py-3 text-sm font-medium transition-colors ${
+              selectedTab === 'businesses'
+                ? 'text-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            All Businesses
+            <span
+              className={`absolute inset-x-0 -bottom-[1px] h-[3px] rounded-full transition-colors ${
+                selectedTab === 'businesses' ? 'bg-primary' : 'bg-transparent'
+              }`}
+            />
           </button>
         </div>
       </div>
@@ -984,9 +953,9 @@ export default function AdminBusinessesList() {
 
           {/* ===== TOOLBAR ===== */}
           <div className={`${shellCard} p-4 mb-6`}>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
               {/* Search */}
-              <div className="flex-1 min-w-50">
+              <div className="w-full lg:flex-1">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-muted-foreground" />
                   <input
@@ -1000,8 +969,8 @@ export default function AdminBusinessesList() {
               </div>
 
               {/* Filters */}
-              <div className="flex min-w-85 items-center gap-2">
-                <div className="min-w-37.5">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap lg:w-auto lg:flex-nowrap lg:items-center">
+                <div className="w-full sm:w-52 lg:w-52">
                   <Select<SelectOption<'all' | 'active' | 'suspended' | 'pending' | 'onboarding'>, false>
                     instanceId="business-status-select"
                     isSearchable
@@ -1013,10 +982,11 @@ export default function AdminBusinessesList() {
                     }}
                     styles={selectStyles}
                     placeholder="All Status"
+                    className="w-full"
                   />
                 </div>
 
-                <div className="min-w-37.5">
+                <div className="w-full sm:w-52 lg:w-52">
                   <Select<SelectOption<'all' | 'free' | 'pro' | 'enterprise' | 'premium'>, false>
                     instanceId="business-tier-select"
                     isSearchable
@@ -1028,10 +998,11 @@ export default function AdminBusinessesList() {
                     }}
                     styles={selectStyles}
                     placeholder="All Tiers"
+                    className="w-full"
                   />
                 </div>
 
-                <div className="min-w-[160px]">
+                <div className="w-full sm:w-40 lg:w-40">
                   <Select<SelectOption<'name' | 'createdAt' | 'totalUsers' | 'monthlyRevenue' | 'lastActive'>, false>
                     instanceId="business-sort-select"
                     isSearchable
@@ -1043,37 +1014,18 @@ export default function AdminBusinessesList() {
                     }}
                     styles={selectStyles}
                     placeholder="Sort by"
+                    className="w-full"
                   />
                 </div>
 
                 <button
                   onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                  className="rounded-lg border border-border bg-background p-2 transition-colors hover:bg-surface-alt"
+                  className="self-start rounded-lg border border-border bg-background p-2 transition-colors hover:bg-surface-alt lg:self-auto"
                 >
                   {sortOrder === 'asc' ?
                     <ArrowUp className="w-4 h-4 text-foreground" /> :
                     <ArrowDown className="w-4 h-4 text-foreground" />
                   }
-                </button>
-              </div>
-
-              {/* View Toggle */}
-              <div className="flex items-center gap-1 rounded-lg bg-surface-alt p-1">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded transition-colors ${
-                    viewMode === 'grid' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Grid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded transition-colors ${
-                    viewMode === 'list' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <List className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1097,10 +1049,7 @@ export default function AdminBusinessesList() {
               <p className="text-sm">Try adjusting your search or filters</p>
             </div>
           ) : (
-            <div>
-              {viewMode === 'grid' && renderGridView()}
-              {viewMode === 'list' && renderListView()}
-            </div>
+            renderListView()
           )}
 
           {/* ===== FOOTER ===== */}
@@ -1140,21 +1089,20 @@ export default function AdminBusinessesList() {
               >
                 Cancel
               </button>
-              <button
-                onClick={() => {
-                  // Handle delete
-                  setBusinesses(businesses.filter(b => b.id !== businessToDelete.id));
-                  setShowDeleteModal(false);
-                  setBusinessToDelete(null);
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                Delete Business
-              </button>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setBusinessToDelete(null);
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                Close
+                </button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
