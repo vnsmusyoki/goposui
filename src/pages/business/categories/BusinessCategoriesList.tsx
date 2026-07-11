@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import Select, { type SingleValue, type StylesConfig } from 'react-select';
+import Select, { type StylesConfig } from 'react-select';
 import {
   Search, 
   Plus,
@@ -34,24 +34,7 @@ import {
   Home,
   Sparkles, 
 } from 'lucide-react';
-
-type CategoryItem = {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  slug: string;
-  parentId: string | null;
-  level: number;
-  productCount: number;
-  active: boolean;
-  featured: boolean;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  subCategories: CategoryItem[];
-};
+import { type CategoryItem, useCategories } from '@/hooks/business/categories/useCategories';
 
 type StatusBadgeProps = {
   active: boolean;
@@ -142,252 +125,6 @@ const selectStyles: StylesConfig<any, false> = {
   }),
 };
 
-// ===================== MOCK DATA =====================
-const mockCategories: CategoryItem[] = [
-  {
-    id: 'cat_001',
-    name: 'Cereals & Grains',
-    description: 'All cereal products including maize, rice, wheat, and beans',
-    icon: 'Package',
-    slug: 'cereals-grains',
-    parentId: null,
-    level: 0,
-    productCount: 156,
-    active: true,
-    featured: true,
-    sortOrder: 1,
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-07-10T14:30:00Z',
-    createdBy: 'Admin User',
-    subCategories: [
-      {
-        id: 'cat_001a',
-        name: 'Maize Flour',
-        description: 'Various maize flour products',
-        icon: 'Box',
-        slug: 'maize-flour',
-        parentId: 'cat_001',
-        level: 1,
-        productCount: 45,
-        active: true,
-        featured: true,
-        sortOrder: 1,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      },
-      {
-        id: 'cat_001b',
-        name: 'Rice',
-        description: 'All rice varieties',
-        icon: 'Box',
-        slug: 'rice',
-        parentId: 'cat_001',
-        level: 1,
-        productCount: 32,
-        active: true,
-        featured: true,
-        sortOrder: 2,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      },
-      {
-        id: 'cat_001c',
-        name: 'Beans & Pulses',
-        description: 'Dried beans and pulses',
-        icon: 'Box',
-        slug: 'beans-pulses',
-        parentId: 'cat_001',
-        level: 1,
-        productCount: 28,
-        active: true,
-        featured: false,
-        sortOrder: 3,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      }
-    ]
-  },
-  {
-    id: 'cat_002',
-    name: 'Beverages',
-    description: 'Drinks and beverages including sodas, juices, and water',
-    icon: 'Coffee',
-    slug: 'beverages',
-    parentId: null,
-    level: 0,
-    productCount: 89,
-    active: true,
-    featured: true,
-    sortOrder: 2,
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-07-10T14:30:00Z',
-    createdBy: 'Admin User',
-    subCategories: [
-      {
-        id: 'cat_002a',
-        name: 'Soft Drinks',
-        description: 'Carbonated and non-carbonated sodas',
-        icon: 'Bottle',
-        slug: 'soft-drinks',
-        parentId: 'cat_002',
-        level: 1,
-        productCount: 34,
-        active: true,
-        featured: false,
-        sortOrder: 1,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      },
-      {
-        id: 'cat_002b',
-        name: 'Juices',
-        description: 'Fresh and packaged juices',
-        icon: 'Apple',
-        slug: 'juices',
-        parentId: 'cat_002',
-        level: 1,
-        productCount: 26,
-        active: true,
-        featured: false,
-        sortOrder: 2,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      }
-    ]
-  },
-  {
-    id: 'cat_003',
-    name: 'Household Supplies',
-    description: 'Cleaning products, detergents, and household essentials',
-    icon: 'Home',
-    slug: 'household-supplies',
-    parentId: null,
-    level: 0,
-    productCount: 124,
-    active: true,
-    featured: false,
-    sortOrder: 3,
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-07-10T14:30:00Z',
-    createdBy: 'Admin User',
-    subCategories: [
-      {
-        id: 'cat_003a',
-        name: 'Cleaning Products',
-        description: 'Surface cleaners, disinfectants, and detergents',
-        icon: 'Sparkles',
-        slug: 'cleaning-products',
-        parentId: 'cat_003',
-        level: 1,
-        productCount: 54,
-        active: true,
-        featured: false,
-        sortOrder: 1,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      },
-      {
-        id: 'cat_003b',
-        name: 'Laundry',
-        description: 'Laundry detergents and fabric softeners',
-        icon: 'WashingMachine',
-        slug: 'laundry',
-        parentId: 'cat_003',
-        level: 1,
-        productCount: 38,
-        active: true,
-        featured: false,
-        sortOrder: 2,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      }
-    ]
-  },
-  {
-    id: 'cat_004',
-    name: 'Snacks & Confectionery',
-    description: 'Chips, candies, chocolates, and snack foods',
-    icon: 'Candy',
-    slug: 'snacks-confectionery',
-    parentId: null,
-    level: 0,
-    productCount: 78,
-    active: false,
-    featured: false,
-    sortOrder: 4,
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-07-10T14:30:00Z',
-    createdBy: 'Admin User',
-    subCategories: []
-  },
-  {
-    id: 'cat_005',
-    name: 'Personal Care',
-    description: 'Toiletries, cosmetics, and personal hygiene products',
-    icon: 'User',
-    slug: 'personal-care',
-    parentId: null,
-    level: 0,
-    productCount: 92,
-    active: true,
-    featured: true,
-    sortOrder: 5,
-    createdAt: '2024-01-15T08:00:00Z',
-    updatedAt: '2024-07-10T14:30:00Z',
-    createdBy: 'Admin User',
-    subCategories: [
-      {
-        id: 'cat_005a',
-        name: 'Shampoo & Conditioner',
-        description: 'Hair care products',
-        icon: 'Scissors',
-        slug: 'hair-care',
-        parentId: 'cat_005',
-        level: 1,
-        productCount: 29,
-        active: true,
-        featured: false,
-        sortOrder: 1,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      },
-      {
-        id: 'cat_005b',
-        name: 'Soap & Body Wash',
-        description: 'Bath and shower products',
-        icon: 'Shower',
-        slug: 'soap-body-wash',
-        parentId: 'cat_005',
-        level: 1,
-        productCount: 33,
-        active: true,
-        featured: false,
-        sortOrder: 2,
-        createdAt: '2024-01-15T08:00:00Z',
-        updatedAt: '2024-07-10T14:30:00Z',
-        createdBy: 'Admin User',
-        subCategories: []
-      }
-    ]
-  }
-];
-
 const statusOptions: SelectOption<'all' | 'active' | 'inactive'>[] = [
   { value: 'all', label: 'All Status' },
   { value: 'active', label: 'Active' },
@@ -445,16 +182,9 @@ const CategoryIcon = ({ iconName, className = "w-5 h-5" }: CategoryIconProps) =>
     'FolderTree': FolderTree,
     'FolderOpen': FolderOpen,
     'FolderClosed': FolderClosed,
-    'Coffee': Coffee,
-    'Bottle': Bottle,
-    'Apple': Apple,
     'Home': Home,
     'Sparkles': Sparkles,
-    'WashingMachine': WashingMachine,
-    'Candy': Candy,
     'User': User,
-    'Scissors': Scissors,
-    'Shower': Shower,
     'Tag': Tag,
     'Tags': Tags,
     'Hash': Hash,
@@ -468,6 +198,7 @@ const CategoryIcon = ({ iconName, className = "w-5 h-5" }: CategoryIconProps) =>
 // ===================== MAIN COMPONENT =====================
 
 export default function BusinessCategoriesList() {
+  const { categories, isLoading, error, fetchCategories, deleteCategory } = useCategories();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'tree' | 'grid' | 'list'>('tree');
   const [sortBy, setSortBy] = useState<'name' | 'productCount' | 'createdAt' | 'sortOrder'>('name');
@@ -477,12 +208,19 @@ export default function BusinessCategoriesList() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [categoryToDelete, setCategoryToDelete] = useState<CategoryItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [categories, setCategories] = useState(mockCategories);
   const shellCard = 'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
   const primaryButton = 'rounded-lg bg-primary text-primary-foreground hover:bg-primary/90';
   const mutedIconButton = 'rounded hover:bg-surface-alt transition-colors text-muted-foreground';
   const navigate = useNavigate();
+
+  useEffect(() => {
+    void fetchCategories();
+  }, [fetchCategories]);
+
+  const handleRefresh = async () => {
+    await fetchCategories();
+  };
+
   const selectedStatusOption = useMemo(
     () => statusOptions.find((option) => option.value === filterStatus) ?? statusOptions[0],
     [filterStatus],
@@ -832,43 +570,24 @@ export default function BusinessCategoriesList() {
           <button className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
             <DownloadIcon className="w-5 h-5 text-primary" />
           </button>
-          <button className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}
+          >
             <RefreshCw className="w-5 h-5 text-primary" />
           </button>
         </div>
       </div>
-
-      {/* ===== STATS ===== */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className={`${shellCard} p-4`}>
-          <p className="text-sm text-muted-foreground">Total Categories</p>
-          <p className="text-2xl font-bold text-foreground">{stats.total}</p>
-        </div>
-        <div className={`${shellCard} p-4`}>
-          <p className="text-sm text-muted-foreground">Active</p>
-          <p className="text-2xl font-bold text-success">{stats.active}</p>
-        </div>
-        <div className={`${shellCard} p-4`}>
-          <p className="text-sm text-muted-foreground">Inactive</p>
-          <p className="text-2xl font-bold text-muted-foreground">{stats.inactive}</p>
-        </div>
-        <div className={`${shellCard} p-4`}>
-          <p className="text-sm text-muted-foreground">Featured</p>
-          <p className="text-2xl font-bold text-warning">{stats.featured}</p>
-        </div>
-        <div className={`${shellCard} p-4`}>
-          <p className="text-sm text-muted-foreground">Total Products</p>
-          <p className="text-2xl font-bold text-primary">{stats.totalProducts}</p>
-        </div>
-      </div>
+ 
 
       {/* ===== TOOLBAR ===== */}
       <div className={`${shellCard} p-4 mb-6`}>
           <div className="flex flex-wrap items-center gap-4">
             {/* Search */}
-            <div className="flex-1 min-w-[200px]">
+            <div className="flex-1 min-w-50">
               <div className="relative">
-              <Search className="absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 w-4 h-4 outline:none focus:border-primary -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="text"
                   placeholder="Search categories..."
@@ -880,8 +599,8 @@ export default function BusinessCategoriesList() {
             </div>
 
           {/* Filters */}
-          <div className="flex min-w-[340px] items-center gap-2">
-            <div className="min-w-[150px]">
+          <div className="flex min-w-85 items-center gap-2">
+            <div className="min-w-37.5">
               <Select<SelectOption<'all' | 'active' | 'inactive'>, false>
                 instanceId="category-status-select"
                 isSearchable
@@ -952,6 +671,12 @@ export default function BusinessCategoriesList() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      )}
+
       {/* ===== CATEGORIES LIST ===== */}
       <div className={`${shellCard} overflow-hidden`}>
         {isLoading ? (
@@ -1021,9 +746,9 @@ export default function BusinessCategoriesList() {
                 Cancel
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Handle delete
-                  setCategories((prev) => prev.filter((c) => c.id !== categoryToDelete.id));
+                  await deleteCategory(categoryToDelete.id);
                   setShowDeleteModal(false);
                   setCategoryToDelete(null);
                 }}
@@ -1039,74 +764,3 @@ export default function BusinessCategoriesList() {
     </div>
   );
 }
-
-// ===================== MISSING ICON COMPONENTS =====================
-
-const Coffee = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
-    <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" />
-    <line x1="6" y1="2" x2="6" y2="4" />
-    <line x1="10" y1="2" x2="10" y2="4" />
-    <line x1="14" y1="2" x2="14" y2="4" />
-  </svg>
-);
-
-const Bottle = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2v4" />
-    <path d="M12 6c-2 0-3.5 1.5-3.5 4v8a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2v-8c0-2.5-1.5-4-3.5-4z" />
-  </svg>
-);
-
-const Apple = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
-    <path d="M10 2c1 .5 2 2 2 5" />
-  </svg>
-);
-
-const WashingMachine = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="4" width="16" height="16" rx="2" />
-    <circle cx="12" cy="12" r="3" />
-    <line x1="4" y1="8" x2="20" y2="8" />
-    <line x1="4" y1="16" x2="20" y2="16" />
-  </svg>
-);
-
-const Candy = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 2v4" />
-    <path d="M12 18v4" />
-    <path d="M4 12H2" />
-    <path d="M22 12h-2" />
-    <path d="M6.5 6.5L5 5" />
-    <path d="M19 19l-1.5-1.5" />
-    <path d="M17.5 6.5L19 5" />
-    <path d="M5 19l1.5-1.5" />
-    <circle cx="12" cy="12" r="4" />
-  </svg>
-);
-
-const Scissors = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="6" cy="6" r="3" />
-    <circle cx="6" cy="18" r="3" />
-    <line x1="20" y1="4" x2="8.12" y2="15.88" />
-    <line x1="14.47" y1="14.48" x2="20" y2="20" />
-    <line x1="8.12" y1="8.12" x2="12" y2="12" />
-  </svg>
-);
-
-const Shower = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 8h16" />
-    <path d="M8 4v4" />
-    <path d="M16 4v4" />
-    <path d="M12 12v8" />
-    <path d="M8 16h8" />
-    <path d="M20 16h2" />
-    <path d="M2 16h2" />
-  </svg>
-);

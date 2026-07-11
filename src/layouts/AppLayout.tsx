@@ -113,6 +113,11 @@ const AppLayout: React.FC = () => {
   const location = useLocation();
   const workspaceRole = useMemo(() => getWorkspaceSlug(user), [user]);
   const workspaceLabel = useMemo(() => getWorkspaceLabel(user), [user]);
+  const moduleGroups = useMemo(
+    () => modules.filter((group) => group.items.length > 0),
+    [modules],
+  );
+  const [openModuleKey, setOpenModuleKey] = useState<string | null | undefined>(undefined);
 
   // Memoized values
   const filteredModules = useMemo(() => {
@@ -121,15 +126,100 @@ const AppLayout: React.FC = () => {
     return modules
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) =>
-          item.name.toLowerCase().includes(search) || item.path.toLowerCase().includes(search),
-        ),
+        items: group.items.filter((item) => {
+          const parentMatch =
+            item.name.toLowerCase().includes(search) ||
+            (item.path ?? '').toLowerCase().includes(search);
+          const childMatch = item.children?.some(
+            (child) =>
+              child.name.toLowerCase().includes(search) ||
+              (child.path ?? '').toLowerCase().includes(search),
+          );
+
+          return parentMatch || Boolean(childMatch);
+        }),
       }))
       .filter((group) => {
         const groupMatch = group.name.toLowerCase().includes(search);
         return groupMatch || group.items.length > 0;
       });
   }, [modules, menuSearch]);
+  const filteredModuleGroups = useMemo(
+    () => filteredModules.filter((group) => group.items.length > 0),
+    [filteredModules],
+  );
+  const visibleOpenableModuleKeys = useMemo(
+    () =>
+      filteredModuleGroups
+        .filter((group) => {
+          const moduleItem = group.items[0];
+          return Boolean(moduleItem?.hasSubModules && (moduleItem.children?.length ?? 0) > 0);
+        })
+        .map((group) => group.name),
+    [filteredModuleGroups],
+  );
+  const activeModuleKey = useMemo(() => {
+    for (const group of filteredModuleGroups) {
+      const moduleItem = group.items[0];
+      if (!moduleItem) {
+        continue;
+      }
+
+      if (moduleItem.path && moduleItem.path === location.pathname) {
+        return group.name;
+      }
+
+      if (moduleItem.children?.some((child) => child.path && child.path === location.pathname)) {
+        return group.name;
+      }
+    }
+
+    return null;
+  }, [filteredModuleGroups, location.pathname]);
+  const resolvedOpenModuleKey = useMemo(() => {
+    if (openModuleKey === null) {
+      return null;
+    }
+
+    if (openModuleKey && visibleOpenableModuleKeys.includes(openModuleKey)) {
+      return openModuleKey;
+    }
+
+    if (activeModuleKey && visibleOpenableModuleKeys.includes(activeModuleKey)) {
+      return activeModuleKey;
+    }
+
+    return openModuleKey === undefined ? visibleOpenableModuleKeys[0] ?? null : null;
+  }, [activeModuleKey, openModuleKey, visibleOpenableModuleKeys]);
+
+  useEffect(() => {
+    if (visibleOpenableModuleKeys.length === 0) {
+      if (openModuleKey !== null) {
+        setOpenModuleKey(null);
+      }
+      return;
+    }
+
+    if (openModuleKey === null) {
+      return;
+    }
+
+    if (activeModuleKey && visibleOpenableModuleKeys.includes(activeModuleKey)) {
+      if (openModuleKey === undefined || !visibleOpenableModuleKeys.includes(openModuleKey)) {
+        setOpenModuleKey(activeModuleKey);
+      }
+      return;
+    }
+
+    if (openModuleKey === undefined) {
+      setOpenModuleKey(visibleOpenableModuleKeys[0]);
+      return;
+    }
+
+    if (openModuleKey !== null && !visibleOpenableModuleKeys.includes(openModuleKey)) {
+      setOpenModuleKey(visibleOpenableModuleKeys[0] ?? null);
+    }
+  }, [activeModuleKey, openModuleKey, visibleOpenableModuleKeys]);
 
   const routeInfo = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean);
@@ -156,7 +246,7 @@ const AppLayout: React.FC = () => {
       if (refreshError) {
         toast.error(refreshError);
       } else {
-        toast.success(`Modules refreshed successfully (${refreshedModules.length} groups)`);
+        toast.success(`Modules refreshed successfully `);
       }
     } catch {
       toast.error('Unable to refresh modules right now.');
@@ -173,6 +263,17 @@ const AppLayout: React.FC = () => {
     setMenuSearch('');
     menuSearchInputRef.current?.focus();
   }, []);
+
+  const handleModuleHeaderClick = useCallback((groupName: string, hasChildren: boolean, path?: string) => {
+    if (hasChildren) {
+      setOpenModuleKey((current) => (current === groupName ? null : groupName));
+      return;
+    }
+
+    if (path) {
+      handleNavigation(path);
+    }
+  }, [handleNavigation]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -202,46 +303,85 @@ const AppLayout: React.FC = () => {
   // Render sidebar navigation
   const renderSidebarNav = () => (
     <nav className="flex-1 overflow-y-auto py-4 custom-scrollbar">
-      {isModulesLoading && filteredModules.length === 0 ? (
+      {isModulesLoading && filteredModuleGroups.length === 0 ? (
         <div className="px-4 py-6 text-sm text-muted-foreground">
           Loading modules...
         </div>
-      ) : filteredModules.length === 0 ? (
+      ) : filteredModuleGroups.length === 0 ? (
         <div className="px-4 py-6 text-sm text-muted-foreground">
           No modules available for this workspace yet.
         </div>
-      ) : filteredModules.map((group) => (
+      ) : filteredModuleGroups.map((group) => {
+        const moduleItem = group.items[0];
+        if (!moduleItem) {
+          return null;
+        }
+
+        const hasChildren = Boolean(moduleItem.hasSubModules && (moduleItem.children?.length ?? 0) > 0);
+        const isExpanded = resolvedOpenModuleKey === group.name;
+        const isActiveParent =
+          (moduleItem.path && moduleItem.path === location.pathname) ||
+          Boolean(moduleItem.children?.some((child) => child.path && child.path === location.pathname));
+
+        return (
         <div key={group.name} className={`${sidebarCollapsed ? 'hidden' : ''} mt-3 first:mt-0`}>
-          <div className="mb-1 px-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-foreground/90">
-              {group.name}
-            </div>
-          </div>
           <div className="space-y-0.5">
-            {group.items.map((item) => (
-              <button
-                key={`${group.name}-${item.path}`}
-                onClick={() => handleNavigation(item.path)}
-                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 group
-                  ${location.pathname === item.path
-                    ? 'pl-8 border border-border bg-surface-alt text-primary font-medium'
-                    : 'pl-8 text-foreground/75 hover:bg-surface-alt hover:text-foreground'
-                  }`}
-                title={item.name}
-              >
+            <button
+              type="button"
+              onClick={() => handleModuleHeaderClick(group.name, hasChildren, moduleItem.path)}
+              className={`group flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 transition-all duration-200 ${
+                isActiveParent
+                  ? 'border border-border bg-surface-alt text-primary font-medium'
+                  : 'text-foreground/75 hover:bg-surface-alt hover:text-foreground'
+              }`}
+              title={moduleItem.name}
+            >
+              <span className={`flex min-w-0 items-center gap-3 ${sidebarCollapsed ? 'justify-center' : ''}`}>
                 <DynamicIcon
-                  iconName={item.icon ?? 'LayoutDashboard'}
+                  iconName={moduleItem.icon ?? 'LayoutDashboard'}
                   size={20}
                   className="flex-shrink-0"
                 />
                 {!sidebarCollapsed && (
-                  <span className="font-medium text-sm truncate">{item.name}</span>
+                  <span className="truncate text-sm font-medium">{moduleItem.name}</span>
                 )}
-              </button>
-            ))}
+              </span>
+              {hasChildren && !sidebarCollapsed && (
+                <ChevronRight
+                  size={18}
+                  className={`flex-shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                />
+              )}
+            </button>
+
+            {hasChildren && isExpanded && !sidebarCollapsed && (
+              <div className="ml-4 space-y-0.5 border-l border-border/70 pl-3">
+                {moduleItem.children?.map((child) => (
+                  <button
+                    type="button"
+                    key={`${group.name}-${child.path}`}
+                    onClick={() => child.path && handleNavigation(child.path)}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                      location.pathname === child.path
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-foreground/75 hover:bg-surface-alt hover:text-foreground'
+                    }`}
+                    title={child.name}
+                  >
+                    <DynamicIcon
+                      iconName={child.icon ?? moduleItem.icon ?? 'LayoutDashboard'}
+                      size={18}
+                      className="flex-shrink-0"
+                    />
+                    <span className="truncate">{child.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ))}
+        );
+      })}
     </nav>
   );
 

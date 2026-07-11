@@ -82,3 +82,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
   },
 }))
 
+if (typeof window !== 'undefined') {
+  window.addEventListener('pos:session-invalidated', () => {
+    useAuthStore.getState().clearSession()
+  })
+}

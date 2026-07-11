@@ -72,3 +72,9 @@ export const useModulesStore = create<ModulesStore>((set) => ({
     }
   },
 }))
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pos:session-invalidated', () => {
+    useModulesStore.getState().clearModules()
+  })
+}

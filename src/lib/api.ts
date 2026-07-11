@@ -1,4 +1,6 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api'
+const SESSION_INVALIDATED_EVENT = 'pos:session-invalidated'
+let isInvalidatingSession = false
 
 export class ApiError extends Error {
   status: number
@@ -13,6 +15,26 @@ export class ApiError extends Error {
 }
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null
+
+function invalidateSessionAndRedirect() {
+  if (typeof window === 'undefined' || isInvalidatingSession) {
+    return
+  }
+
+  isInvalidatingSession = true
+
+  window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT))
+
+  void fetch(`${API_BASE_URL}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+  }).catch(() => undefined)
+
+  if (window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
@@ -40,6 +62,10 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
       typeof payload === 'object' && payload !== null && 'message' in payload
         ? String((payload as Record<string, unknown>).message ?? 'Request failed')
         : response.statusText || 'Request failed'
+
+    if (response.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/logout')) {
+      invalidateSessionAndRedirect()
+    }
 
     throw new ApiError(message, response.status, payload)
   }

@@ -30,7 +30,9 @@ export type ModuleResponse = {
 export type NavigationItemResponse = {
   name: string
   icon?: string
-  path: string
+  path?: string
+  hasSubModules?: boolean
+  children?: NavigationItemResponse[]
 }
 
 export type NavigationGroupResponse = {

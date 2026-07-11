@@ -14,6 +14,8 @@ import BusinessCategoriesList from './pages/business/categories/BusinessCategori
 import CreateBusinessCategory from './pages/business/categories/CreateBusinessCategory'
 import BusinessSubCategoryList from './pages/business/subcategories/BusinessSubCategoryList'
 import CreateSubCategory from './pages/business/subcategories/CreateSubCategory'
+import AdminModuleList from './pages/admin/modules/AdminModuleList'
+import AdminBusinessesList from './pages/admin/business/AdminBusinessesList'
 
 function App() {
   return (
@@ -47,6 +49,13 @@ function App() {
           <Route path="/inventory/subcategories" element={<BusinessSubCategoryList />} />
           <Route path="/inventory/subcategories/create" element={<CreateSubCategory />} />
         </Route>
+      </Route>
+
+      <Route element={<ProtectedRoute requiredRoles="Admin"/>} >
+        <Route element={<AppLayout />} >
+            <Route path="/admin/modules-management" element={<AdminModuleList />} />
+            <Route path="/business-management/list" element={<AdminBusinessesList />} />
+          </Route>
       </Route>
 
       <Route element={<ProtectedRoute />}>

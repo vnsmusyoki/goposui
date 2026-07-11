@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Select, { type SingleValue, type StylesConfig } from 'react-select';
+import { useNavigate } from 'react-router-dom'; 
+import toast from 'react-hot-toast';
 import {
   ArrowLeft,
   Save, 
@@ -10,123 +10,16 @@ import {
   Hash,
   Upload,
   Image as ImageIcon, 
-  Info,
-  CheckCircle, 
+  Info, 
   Loader2,
   Star,
 } from 'lucide-react';
-
-// ===================== TYPES =====================
-
-type CategoryFormData = {
-  name: string;
-  description: string;
-  parentId: string | null;
-  active: boolean;
-  featured: boolean;
-  sortOrder: number;
-  metaTitle: string;
-  metaDescription: string;
-  imageUrl: string;
-  imageName: string;
-  imageSize: number;
-};
+import { ApiError } from '@/lib/api';
+import { type CategoryFormData, useCategories } from '@/hooks/business/categories/useCategories';
 
 type FormError = {
   field: string;
   message: string;
-};
-
-type SelectOption<T extends string> = {
-  value: T;
-  label: string;
-};
-
-// ===================== CONSTANTS =====================
-
-const PARENT_CATEGORIES = [
-  { id: '', name: 'None (Top Level)' },
-  { id: 'cat_001', name: 'Cereals & Grains' },
-  { id: 'cat_002', name: 'Beverages' },
-  { id: 'cat_003', name: 'Household Supplies' },
-  { id: 'cat_004', name: 'Snacks & Confectionery' },
-  { id: 'cat_005', name: 'Personal Care' },
-];
-
-const parentCategoryOptions: SelectOption<string>[] = PARENT_CATEGORIES.map((category) => ({
-  value: category.id,
-  label: category.name,
-}));
-
-const selectStyles: StylesConfig<SelectOption<string>, false> = {
-  control: (base, state) => ({
-    ...base,
-    minHeight: 40,
-    borderRadius: 8,
-    borderColor: 'hsl(var(--border))',
-    backgroundColor: 'hsl(var(--background))',
-    boxShadow: state.isFocused ? '0 0 0 2px hsl(var(--primary) / 0.2)' : 'none',
-    ':hover': {
-      borderColor: 'hsl(var(--primary))',
-    },
-  }),
-  valueContainer: (base) => ({
-    ...base,
-    paddingTop: 0,
-    paddingBottom: 0,
-  }),
-  input: (base) => ({
-    ...base,
-    color: 'hsl(var(--foreground))',
-  }),
-  singleValue: (base) => ({
-    ...base,
-    color: 'hsl(var(--foreground))',
-  }),
-  placeholder: (base) => ({
-    ...base,
-    color: 'hsl(var(--muted-foreground))',
-  }),
-  menu: (base) => ({
-    ...base,
-    zIndex: 50,
-    backgroundColor: 'hsl(var(--background))',
-    border: '1px solid hsl(var(--border))',
-    boxShadow: '0 18px 45px rgba(15, 23, 42, 0.12)',
-  }),
-  menuList: (base) => ({
-    ...base,
-    padding: 4,
-  }),
-  option: (base, state) => ({
-    ...base,
-    borderRadius: 6,
-    backgroundColor: state.isSelected
-      ? 'hsl(var(--primary))'
-      : state.isFocused
-        ? 'hsl(var(--muted))'
-        : 'transparent',
-    color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
-    ':active': {
-      backgroundColor: 'hsl(var(--primary) / 0.9)',
-      color: 'hsl(var(--primary-foreground))',
-    },
-  }),
-  indicatorsContainer: (base) => ({
-    ...base,
-    color: 'hsl(var(--muted-foreground))',
-  }),
-  dropdownIndicator: (base) => ({
-    ...base,
-    color: 'hsl(var(--muted-foreground))',
-    ':hover': {
-      color: 'hsl(var(--foreground))',
-    },
-  }),
-  indicatorSeparator: (base) => ({
-    ...base,
-    backgroundColor: 'hsl(var(--border))',
-  }),
 };
 
 function formatFileSize(bytes: number) {
@@ -136,8 +29,117 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ===================== COMPONENTS =====================
+const apiFieldToFormField: Record<string, string> = {
+  category_code: 'categoryCode',
+  meta_title: 'metaTitle',
+  meta_description: 'metaDescription',
+  image_url: 'imageUrl',
+  business_id: 'form',
+};
 
+const MAX_CATEGORY_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_CATEGORY_IMAGE_TYPES = new Set(['image/png', 'image/jpeg']);
+
+function readBlobAsDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Unable to process the selected image.'));
+    };
+    reader.onerror = () => reject(new Error('Unable to process the selected image.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Unable to read the selected image.'));
+    };
+
+    image.src = objectUrl;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('Unable to process the selected image.'));
+          return;
+        }
+        resolve(blob);
+      },
+      'image/jpeg',
+      quality,
+    );
+  });
+}
+
+async function compressCategoryImage(file: File): Promise<{ imageUrl: string; imageSize: number }> {
+  if (!ALLOWED_CATEGORY_IMAGE_TYPES.has(file.type)) {
+    throw new Error('Only PNG and JPEG images are allowed.');
+  }
+
+  const image = await loadImage(file);
+  let width = image.naturalWidth || image.width;
+  let height = image.naturalHeight || image.height;
+  const maxDimension = 1600;
+
+  if (width <= 0 || height <= 0) {
+    throw new Error('Unable to read the selected image.');
+  }
+
+  const scale = Math.min(1, maxDimension / Math.max(width, height));
+  width = Math.max(1, Math.round(width * scale));
+  height = Math.max(1, Math.round(height * scale));
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Unable to process the selected image.');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of [0.85, 0.75, 0.65, 0.55, 0.45]) {
+      const blob = await canvasToBlob(canvas, quality);
+      if (blob.size <= MAX_CATEGORY_IMAGE_BYTES) {
+        return {
+          imageUrl: await readBlobAsDataURL(blob),
+          imageSize: blob.size,
+        };
+      }
+    }
+
+    width = Math.max(1, Math.floor(width * 0.8));
+    height = Math.max(1, Math.floor(height * 0.8));
+  }
+
+  throw new Error('Image must be smaller than 5 MB after compression.');
+}
+
+ 
 // Form Input Component
 const FormInput = ({ 
   label, 
@@ -245,57 +247,6 @@ const FormTextarea = ({
   );
 };
 
-// Form Select Component
-const FormSelect = ({
-  label,
-  id,
-  value,
-  onChange,
-  options,
-  error,
-  required = false,
-  placeholder = 'Select...',
-}: {
-  label: string;
-  id: string;
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  options: { id: string; name: string }[];
-  error?: string;
-  required?: boolean;
-  placeholder?: string;
-}) => {
-  return (
-    <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
-        {label}
-        {required && <span className="text-destructive ml-0.5">*</span>}
-      </label>
-      <select
-        id={id}
-        value={value}
-        onChange={onChange}
-        className={`w-full rounded-lg border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${
-          error ? 'border-destructive focus:border-destructive' : 'border-border'
-        }`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <p className="flex items-center gap-1 text-xs text-destructive">
-          <AlertCircle className="w-3 h-3" />
-          {error}
-        </p>
-      )}
-    </div>
-  );
-};
-
 // Toggle Switch Component
 const ToggleSwitch = ({
   label,
@@ -336,13 +287,14 @@ const ToggleSwitch = ({
 export default function CreateBusinessCategory() {
   const navigate = useNavigate();
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const { createCategory, isLoading: isCategoryActionLoading } = useCategories();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errors, setErrors] = useState<FormError[]>([]);
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
+    categoryCode: '',
     description: '',
-    parentId: null,
     active: true,
     featured: false,
     sortOrder: 0,
@@ -355,7 +307,7 @@ export default function CreateBusinessCategory() {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
 
   // Validate form
-  const validateForm = (): boolean => {
+  const validateForm = (): FormError[] => {
     const newErrors: FormError[] = [];
 
     if (!formData.name.trim()) {
@@ -363,16 +315,16 @@ export default function CreateBusinessCategory() {
     }
 
     setErrors(newErrors);
-    return newErrors.length === 0;
+    return newErrors;
   };
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      // Scroll to first error
-      const firstError = errors[0];
+
+    const validationErrors = validateForm();
+    if (validationErrors.length > 0) {
+      const firstError = validationErrors[0];
       const element = document.getElementById(firstError.field);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -383,18 +335,58 @@ export default function CreateBusinessCategory() {
 
     setIsSubmitting(true);
 
-    // Simulate API call
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      console.log('Category data:', formData);
+      await createCategory({
+        name: formData.name,
+        categoryCode: formData.categoryCode,
+        description: formData.description,
+        metaTitle: formData.metaTitle,
+        metaDescription: formData.metaDescription,
+        imageUrl: formData.imageUrl,
+      });
+      setErrors([]);
       setIsSuccess(true);
-      
-      // Redirect after success
+      toast.success('Category created successfully.');
       setTimeout(() => {
         navigate('/inventory/categories');
       }, 2000);
     } catch (error) {
-      console.error('Error creating category:', error);
+      if (error instanceof ApiError) {
+        const payload = error.data as {
+          message?: string;
+          errors?: Record<string, string>;
+        };
+
+        if (payload?.errors && typeof payload.errors === 'object') {
+          const normalizedErrors = Object.entries(payload.errors).map(([field, message]) => ({
+            field: apiFieldToFormField[field] ?? field,
+            message,
+          }));
+          setErrors(normalizedErrors);
+          const firstFieldError = normalizedErrors.find((entry) => entry.field !== 'form');
+          if (firstFieldError) {
+            const element = document.getElementById(firstFieldError.field);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              element.focus();
+            }
+          }
+        } else {
+          setErrors([
+            {
+              field: 'form',
+              message: payload?.message ?? error.message ?? 'Unable to create category.',
+            },
+          ]);
+        }
+      } else {
+        setErrors([
+          {
+            field: 'form',
+            message: error instanceof Error ? error.message : 'Unable to create category.',
+          },
+        ]);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -411,49 +403,52 @@ export default function CreateBusinessCategory() {
     imageInputRef.current?.click();
   };
 
-  const applyImageFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
+  const applyImageFile = async (file: File) => {
+    if (!ALLOWED_CATEGORY_IMAGE_TYPES.has(file.type)) {
       setErrors((prev) => [
         ...prev.filter((err) => err.field !== 'imageUrl'),
-        { field: 'imageUrl', message: 'Please choose an image file' },
+        { field: 'imageUrl', message: 'Only PNG and JPEG images are allowed.' },
       ]);
       return;
     }
 
     setErrors((prev) => prev.filter((err) => err.field !== 'imageUrl'));
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setFormData((prev) => ({
-          ...prev,
-          imageUrl: reader.result as string,
-          imageName: file.name,
-          imageSize: file.size,
-        }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressCategoryImage(file);
+      setFormData((prev) => ({
+        ...prev,
+        imageUrl: compressed.imageUrl,
+        imageName: file.name,
+        imageSize: compressed.imageSize,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to process the selected image.';
+      setErrors((prev) => [
+        ...prev.filter((err) => err.field !== 'imageUrl'),
+        { field: 'imageUrl', message },
+      ]);
+    }
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
     if (!file) {
       return;
     }
 
-    applyImageFile(file);
+    await applyImageFile(file);
     event.target.value = '';
   };
 
-  const handleImageDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleImageDrop = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setIsDraggingImage(false);
 
     const file = event.dataTransfer.files?.[0];
     if (!file) return;
-    applyImageFile(file);
+    await applyImageFile(file);
   };
 
   const handleRemoveImage = () => {
@@ -472,9 +467,12 @@ export default function CreateBusinessCategory() {
   const getError = (field: string): string | undefined => {
     return errors.find(err => err.field === field)?.message;
   };
+  const summaryErrors = errors.filter((error) => error.field === 'form' || error.field === 'name' || error.field === 'categoryCode' || error.field === 'description' || error.field === 'metaTitle' || error.field === 'metaDescription' || error.field === 'imageUrl' || error.field === 'sortOrder');
 
   return (
     <div className="min-h-screen bg-background">
+     
+
       {/* ===== HEADER ===== */}
       <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
         <div>
@@ -507,7 +505,7 @@ export default function CreateBusinessCategory() {
           <button
             type="submit"
             form="category-form"
-            disabled={isSubmitting || isSuccess}
+            disabled={isSubmitting || isSuccess || isCategoryActionLoading}
             className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (
@@ -529,24 +527,33 @@ export default function CreateBusinessCategory() {
           </button>
         </div>
       </div>
-
-      {/* ===== SUCCESS BANNER ===== */}
-      {isSuccess && (
-        <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-950/30">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-500" />
-            <div>
-              <p className="font-medium text-green-800 dark:text-green-300">
-                Category created successfully!
+      
+       {summaryErrors.length > 0 && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 shadow-sm dark:border-red-900 dark:bg-red-950/30">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-red-100 p-2 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+              <AlertCircle className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-red-900 dark:text-red-200">
+                Please fix the following issues
+              </h2>
+              <p className="mt-1 text-xs text-red-800 dark:text-red-300">
+                We could not save the category because one or more fields need attention.
               </p>
-              <p className="text-sm text-green-700 dark:text-green-400">
-                Redirecting to categories list...
-              </p>
+              <ul className="mt-3 space-y-2 text-sm text-red-800 dark:text-red-200">
+                {summaryErrors.map((error, index) => (
+                  <li key={`${error.field}-${index}`} className="flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                    <span>{error.message}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
       )}
-
+      
       {/* ===== FORM ===== */}
       <form id="category-form" onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -565,7 +572,16 @@ export default function CreateBusinessCategory() {
                   required
                   placeholder="e.g., Organic Products"
                 />
-
+                <FormInput
+                  id="categoryCode"
+                  label="Category Code"
+                  value={formData.categoryCode}
+                  onChange={(e) => handleChange('categoryCode', e.target.value)}
+                  error={getError('categoryCode')} 
+                  placeholder="e.g., 29838"
+                  helpText="Optional. Leave it blank and we will generate one for you."
+                  icon={Hash}
+                />
                 <FormTextarea
                   id="description"
                   label="Description"
@@ -574,31 +590,22 @@ export default function CreateBusinessCategory() {
                   placeholder="Describe what products belong in this category..."
                   rows={3}
                 />
-
-                <div className="space-y-1.5">
-                  <label htmlFor="parentId" className="text-sm font-medium text-foreground">
-                    Parent Category
-                  </label>
-                  <Select<SelectOption<string>, false>
-                    inputId="parentId"
-                    instanceId="parentId"
-                    isSearchable
-                    isClearable={false}
-                    options={parentCategoryOptions}
-                    value={parentCategoryOptions.find((option) => option.value === (formData.parentId ?? '')) ?? parentCategoryOptions[0]}
-                    onChange={(option: SingleValue<SelectOption<string>>) => {
-                      handleChange('parentId', option?.value || null);
-                    }}
-                    styles={selectStyles}
-                    placeholder="None (Top Level)"
-                  />
-                </div>
               </div>
             </div>
 
             {/* SEO Information Card */}
             <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">SEO Information</h2>
+              <div className="mb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-foreground">SEO Information</h2>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                    Optional
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Add SEO metadata to improve how this category appears in search results.
+                </p>
+              </div>
               <div className="space-y-4">
                 <FormInput
                   id="metaTitle"
@@ -612,17 +619,27 @@ export default function CreateBusinessCategory() {
                 <FormTextarea
                   id="metaDescription"
                   label="Meta Description"
-                value={formData.metaDescription}
-                onChange={(e) => handleChange('metaDescription', e.target.value)}
-                placeholder="SEO description for search engines"
-                rows={2}
-              />
+                  value={formData.metaDescription}
+                  onChange={(e) => handleChange('metaDescription', e.target.value)}
+                  placeholder="SEO description for search engines"
+                  rows={2}
+                />
               </div>
             </div>
 
             {/* Category Image Card */}
             <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">Category Image</h2>
+              <div className="mb-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold text-foreground">Category Image</h2>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                    Optional
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Upload an image to give this category a more visual identity.
+                </p>
+              </div>
               <div
                 className={`cursor-pointer rounded-xl border-2 border-dashed p-5 transition-all ${
                   isDraggingImage
@@ -681,7 +698,7 @@ export default function CreateBusinessCategory() {
                     <div>
                       <p className="text-sm font-medium text-foreground">Upload image</p>
                       <p className="text-sm text-muted-foreground">
-                        PNG, JPG, GIF or WebP. Keep it crisp for the category card.
+                        PNG or JPG only. Images are compressed before being stored and must stay under 5 MB.
                       </p>
                     </div>
 
@@ -742,7 +759,7 @@ export default function CreateBusinessCategory() {
                       <input
                         ref={imageInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/png,image/jpeg,.png,.jpg,.jpeg"
                         className="hidden"
                         onChange={handleImageUpload}
                       />
