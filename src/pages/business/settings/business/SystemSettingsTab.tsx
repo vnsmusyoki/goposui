@@ -1,4 +1,4 @@
-import SettingsTabShell from './SettingsTabShell';
+import SettingsTabShell from '../SettingsTabShell';
 
 export default function SystemSettingsTab() {
   return (

@@ -21,6 +21,8 @@ import BusinessSettings from './pages/business/settings/BusinessSettings'
 import BusinessLocations from './pages/business/settings/location/BusinessLocations'
 import CreateBusinessLocation from './pages/business/settings/location/CreateBusinessLocation'
 import InvoiceSettings from './pages/business/settings/invoice/InvoiceSettings'
+import CreateInvoiceSettings from './pages/business/settings/invoice/CreateInvoiceSettings'
+import EditInvoiceSettings from './pages/business/settings/invoice/EditInvoiceSettings'
 
 function App() {
   return (
@@ -63,6 +65,8 @@ function App() {
           <Route path="/business/locations" element={<BusinessLocations />} />
           <Route path="/business/locations/create" element={<CreateBusinessLocation />} />
           <Route path="/business/invoice-settings" element={<InvoiceSettings />} />
+          <Route path="/business/invoice-settings/create" element={<CreateInvoiceSettings />} />
+          <Route path="/business/invoice-settings/:id/edit" element={<EditInvoiceSettings />} />
         </Route>
       </Route>
 
