@@ -397,7 +397,7 @@ export default function BusinessSettingsBusinessTab() {
       title="Business Settings"
       description="Configure the business identity, finance defaults, and system preferences."
     >
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6 pb-10 sm:pb-0">
         {errorItems.length > 0 && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
             <p className="mb-2 font-semibold">Please fix the following issues:</p>
@@ -651,7 +651,7 @@ export default function BusinessSettingsBusinessTab() {
           </>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4 pb-4 sm:pb-0">
           <button
             type="button"
             className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-alt"
