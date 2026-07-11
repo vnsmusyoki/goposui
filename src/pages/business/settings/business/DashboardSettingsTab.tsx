@@ -1,13 +1,13 @@
-import SettingsTabShell from './SettingsTabShell';
+import SettingsTabShell from '../SettingsTabShell';
 
-export default function PaymentSettingsTab() {
+export default function DashboardSettingsTab() {
   return (
-    <SettingsTabShell title="Payment Settings" description="Set payment methods, banking details, and settlement defaults.">
+    <SettingsTabShell title="Dashboard Settings" description="Choose what the business dashboard should emphasize.">
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Bank name" placeholder="Enter bank name" />
-        <Field label="Account number" placeholder="Enter account number" />
-        <Field label="Payment method" placeholder="Enter payment method" />
-        <Field label="Settlement days" placeholder="Enter settlement days" />
+        <Field label="Default dashboard" placeholder="Enter dashboard name" />
+        <Field label="Visible KPI set" placeholder="Enter KPI set" />
+        <Field label="Theme density" placeholder="Enter density" />
+        <Field label="Widget order" placeholder="Enter widget order" />
       </div>
     </SettingsTabShell>
   );

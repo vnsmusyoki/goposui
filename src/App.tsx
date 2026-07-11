@@ -18,6 +18,9 @@ import AdminModuleList from './pages/admin/modules/AdminModuleList'
 import AdminBusinessesList from './pages/admin/business/AdminBusinessesList'
 import AdminBusinessDetails from './pages/admin/business/AdminBusinessDetails'
 import BusinessSettings from './pages/business/settings/BusinessSettings'
+import BusinessLocations from './pages/business/settings/location/BusinessLocations'
+import CreateBusinessLocation from './pages/business/settings/location/CreateBusinessLocation'
+import InvoiceSettings from './pages/business/settings/invoice/InvoiceSettings'
 
 function App() {
   return (
@@ -57,6 +60,9 @@ function App() {
           {/* BUSINESS SETTINGS */}
 
           <Route path="/business/settings" element={<BusinessSettings />} />
+          <Route path="/business/locations" element={<BusinessLocations />} />
+          <Route path="/business/locations/create" element={<CreateBusinessLocation />} />
+          <Route path="/business/invoice-settings" element={<InvoiceSettings />} />
         </Route>
       </Route>
 

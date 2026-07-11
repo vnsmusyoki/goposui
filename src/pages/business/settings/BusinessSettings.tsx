@@ -12,30 +12,30 @@ import {
   Settings,
   ShoppingCart,
 } from 'lucide-react';
-import BusinessSettingsBusinessTab from './BusinessSettingsBusinessTab';
-import TaxSettingsTab from './TaxSettingsTab';
-import ProductSettingsTab from './ProductSettingsTab';
-import ContactSettingsTab from './ContactSettingsTab';
-import SaleSettingsTab from './SaleSettingsTab';
-import PosSettingsTab from './PosSettingsTab';
-import PurchasesSettingsTab from './PurchasesSettingsTab';
-import PaymentSettingsTab from './PaymentSettingsTab';
-import DashboardSettingsTab from './DashboardSettingsTab';
-import SystemSettingsTab from './SystemSettingsTab';
-import PrefixesSettingsTab from './PrefixesSettingsTab';
+import BusinessSettingsBusinessTab from './business/BusinessSettingsBusinessTab';
+// import TaxSettingsTab from './TaxSettingsTab';
+import ProductSettingsTab from './business/ProductSettingsTab';
+import ContactSettingsTab from './business/ContactSettingsTab';
+import SaleSettingsTab from './business/SaleSettingsTab';
+import PosSettingsTab from './business/PosSettingsTab';
+import PurchasesSettingsTab from './business/PurchasesSettingsTab';
+// import PaymentSettingsTab from './business/PaymentSettingsTab';
+// import DashboardSettingsTab from './business/DashboardSettingsTab';
+// import SystemSettingsTab from './SystemSettingsTab';
+// import PrefixesSettingsTab from './business/PrefixesSettingsTab';
 
 type TabKey =
   | 'business'
-  | 'tax'
+//   | 'tax'
   | 'product'
   | 'contact'
   | 'sale'
   | 'pos'
   | 'purchases'
-  | 'payment'
-  | 'dashboard'
-  | 'system'
-  | 'prefixes';
+//   | 'payment'
+//   | 'dashboard'
+//   | 'system'
+//   | 'prefixes';
 
 export default function BusinessSettings() {
   const [activeTab, setActiveTab] = useState<TabKey>('business');
@@ -43,16 +43,16 @@ export default function BusinessSettings() {
   const tabs = useMemo(
     () => [
       { key: 'business' as const, label: 'Business', icon: Building2 },
-      { key: 'tax' as const, label: 'Tax', icon: FileText },
+    //   { key: 'tax' as const, label: 'Tax', icon: FileText },
       { key: 'product' as const, label: 'Product', icon: Package },
       { key: 'contact' as const, label: 'Contact', icon: Phone },
       { key: 'sale' as const, label: 'Sale', icon: ShoppingCart },
       { key: 'pos' as const, label: 'POS', icon: Monitor },
       { key: 'purchases' as const, label: 'Purchases', icon: CreditCard },
-      { key: 'payment' as const, label: 'Payment', icon: CreditCard },
-      { key: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
-      { key: 'system' as const, label: 'System', icon: Settings },
-      { key: 'prefixes' as const, label: 'Prefixes', icon: Hash },
+    //   { key: 'payment' as const, label: 'Payment', icon: CreditCard },
+    //   { key: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+    //   { key: 'system' as const, label: 'System', icon: Settings },
+    //   { key: 'prefixes' as const, label: 'Prefixes', icon: Hash },
     ],
     [],
   );
@@ -99,16 +99,16 @@ export default function BusinessSettings() {
       </div>
 
       {activeTab === 'business' && <BusinessSettingsBusinessTab />}
-      {activeTab === 'tax' && <TaxSettingsTab />}
+      {/* {activeTab === 'tax' && <TaxSettingsTab />} */}
       {activeTab === 'product' && <ProductSettingsTab />}
       {activeTab === 'contact' && <ContactSettingsTab />}
       {activeTab === 'sale' && <SaleSettingsTab />}
       {activeTab === 'pos' && <PosSettingsTab />}
       {activeTab === 'purchases' && <PurchasesSettingsTab />}
-      {activeTab === 'payment' && <PaymentSettingsTab />}
+      {/* {activeTab === 'payment' && <PaymentSettingsTab />}
       {activeTab === 'dashboard' && <DashboardSettingsTab />}
       {activeTab === 'system' && <SystemSettingsTab />}
-      {activeTab === 'prefixes' && <PrefixesSettingsTab />}
+      {activeTab === 'prefixes' && <PrefixesSettingsTab />} */}
     </div>
   );
 }

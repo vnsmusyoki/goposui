@@ -1,13 +1,13 @@
-import SettingsTabShell from './SettingsTabShell';
+import SettingsTabShell from '../SettingsTabShell';
 
-export default function PurchasesSettingsTab() {
+export default function PrefixesSettingsTab() {
   return (
-    <SettingsTabShell title="Purchases Settings" description="Define purchase approval and receiving defaults.">
+    <SettingsTabShell title="Prefixes Settings" description="Define the prefixes used when generating internal codes.">
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Approval threshold" placeholder="Enter approval threshold" />
-        <Field label="Supplier default terms" placeholder="Enter default terms" />
+        <Field label="Business prefix" placeholder="Enter business prefix" />
+        <Field label="Sale prefix" placeholder="Enter sale prefix" />
         <Field label="Purchase prefix" placeholder="Enter purchase prefix" />
-        <Field label="Receiving note" placeholder="Enter receiving note" />
+        <Field label="POS prefix" placeholder="Enter POS prefix" />
       </div>
     </SettingsTabShell>
   );

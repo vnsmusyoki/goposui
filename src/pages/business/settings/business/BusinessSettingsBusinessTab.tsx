@@ -16,7 +16,7 @@ import {
   useBusinessSettings,
   type UpdateBusinessSettingsInput,
 } from '@/hooks/business/settings/useBusinessSettings';
-import SettingsTabShell from './SettingsTabShell';
+import SettingsTabShell from '../SettingsTabShell';
 
 type SelectOption = {
   value: string;

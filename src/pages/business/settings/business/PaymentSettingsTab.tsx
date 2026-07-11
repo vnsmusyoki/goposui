@@ -1,13 +1,13 @@
-import SettingsTabShell from './SettingsTabShell';
+import SettingsTabShell from '../SettingsTabShell';
 
-export default function SaleSettingsTab() {
+export default function PaymentSettingsTab() {
   return (
-    <SettingsTabShell title="Sale Settings" description="Configure sales behavior and transaction defaults.">
+    <SettingsTabShell title="Payment Settings" description="Set payment methods, banking details, and settlement defaults.">
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="Discount limit" placeholder="Enter discount limit" />
-        <Field label="Receipt footer" placeholder="Enter receipt footer" />
-        <Field label="Sale prefix" placeholder="Enter sale prefix" />
-        <Field label="Reference format" placeholder="Enter reference format" />
+        <Field label="Bank name" placeholder="Enter bank name" />
+        <Field label="Account number" placeholder="Enter account number" />
+        <Field label="Payment method" placeholder="Enter payment method" />
+        <Field label="Settlement days" placeholder="Enter settlement days" />
       </div>
     </SettingsTabShell>
   );
