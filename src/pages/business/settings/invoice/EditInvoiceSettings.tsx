@@ -16,8 +16,14 @@ const seedLayouts: Record<string, Partial<InvoiceLayoutForm>> = {
     showTaxBreakdown: true,
     showDiscounts: true,
     headerAlignment: 'center',
-    headerText: '<p><strong>INVOICE</strong></p>',
-    footerText: '<p>Thank you for your business.</p>',
+    productLabel: 'Product',
+    quantityLabel: 'Qty',
+    unitPriceLabel: 'Unit Price',
+    subTotalLabel: 'Subtotal',
+    categoryHsnCodeLabel: 'Category / HSN Code',
+    totalQuantityLabel: 'Total Quantity',
+    itemDiscountLabel: 'Item Discount',
+    discountedUnitPriceLabel: 'Discounted Unit Price',
   },
 };
 

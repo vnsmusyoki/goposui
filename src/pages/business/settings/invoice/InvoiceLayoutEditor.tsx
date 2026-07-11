@@ -1,24 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
 import { ArrowLeft, Eye, ImagePlus, LayoutTemplate, Save, Sparkles, Trash2, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import QRCode from 'react-qr-code';
+import Barcode from 'react-barcode';
+import { toWords } from 'number-to-words';
 import toast from 'react-hot-toast';
-import { CKEditor } from '@ckeditor/ckeditor5-react';
-import {
-  Autoformat,
-  Bold,
-  ClassicEditor,
-  Essentials,
-  Italic,
-  Heading,
-  Link,
-  List,
-  Paragraph,
-  RemoveFormat,
-  Strikethrough,
-  Underline,
-} from 'ckeditor5';
 import SettingsTabShell from '../SettingsTabShell';
-import 'ckeditor5/ckeditor5.css';
 
 type EditorMode = 'create' | 'edit';
 type EditorTab = 'format' | 'preview';
@@ -29,6 +16,14 @@ type HeaderAlignment = 'left' | 'center' | 'right';
 export type InvoiceLayoutForm = {
   name: string;
   code: string;
+  productLabel: string;
+  quantityLabel: string;
+  unitPriceLabel: string;
+  subTotalLabel: string;
+  categoryHsnCodeLabel: string;
+  totalQuantityLabel: string;
+  itemDiscountLabel: string;
+  discountedUnitPriceLabel: string;
   subheadingLine1: string;
   subheadingLine2: string;
   subheadingLine3: string;
@@ -41,13 +36,38 @@ export type InvoiceLayoutForm = {
   showBusinessDetails: boolean;
   showCustomerDetails: boolean;
   showItemsSku: boolean;
+  showBrand: boolean;
+  showSaleDescription: boolean;
   showQrCode: boolean;
+  showProductExpiry: boolean;
+  showLotNumber: boolean;
+  showProductImage: boolean;
+  showWarrantyName: boolean;
+  showWarrantyExpiryDate: boolean;
+  showWarrantyDescription: boolean;
   showTaxBreakdown: boolean;
   showDiscounts: boolean;
+  showBarcode: boolean;
+  barcodeTotalDueLabel: string;
+  showTotalBalanceDue: boolean;
+  barcodeChangeReturnLabel: string;
+  hideAllPrices: boolean;
+  showTotalInWords: boolean;
+  barcodeWordFormat: 'international' | 'indian';
+  barcodeTaxSummaryLabel: string;
   headerAlignment: HeaderAlignment;
   logoUrl: string;
-  headerText: string;
-  footerText: string;
+  qrShowLabels: boolean;
+  qrShowBusinessName: boolean;
+  qrShowBusinessLocationAddress: boolean;
+  qrShowInvoiceNo: boolean;
+  qrShowSubtotal: boolean;
+  qrShowTotalAmountWithTax: boolean;
+  qrShowTotalTax: boolean;
+  qrShowCustomerName: boolean;
+  qrShowInvoiceUrl: boolean;
+  qrShowInvoiceDateTime: boolean;
+  qrShowBusinessTax1: boolean;
   invoiceNote: string;
 };
 
@@ -80,6 +100,14 @@ const headerAlignmentLabels: Record<HeaderAlignment, string> = {
 const initialForm = (initialValues?: Partial<InvoiceLayoutForm>): InvoiceLayoutForm => ({
   name: initialValues?.name ?? '',
   code: initialValues?.code ?? '',
+  productLabel: initialValues?.productLabel ?? 'Product',
+  quantityLabel: initialValues?.quantityLabel ?? 'Qty',
+  unitPriceLabel: initialValues?.unitPriceLabel ?? 'Unit Price',
+  subTotalLabel: initialValues?.subTotalLabel ?? 'Subtotal',
+  categoryHsnCodeLabel: initialValues?.categoryHsnCodeLabel ?? 'Category / HSN Code',
+  totalQuantityLabel: initialValues?.totalQuantityLabel ?? 'Total Quantity',
+  itemDiscountLabel: initialValues?.itemDiscountLabel ?? 'Item Discount',
+  discountedUnitPriceLabel: initialValues?.discountedUnitPriceLabel ?? 'Discounted Unit Price',
   subheadingLine1: initialValues?.subheadingLine1 ?? '',
   subheadingLine2: initialValues?.subheadingLine2 ?? '',
   subheadingLine3: initialValues?.subheadingLine3 ?? '',
@@ -92,13 +120,38 @@ const initialForm = (initialValues?: Partial<InvoiceLayoutForm>): InvoiceLayoutF
   showBusinessDetails: initialValues?.showBusinessDetails ?? true,
   showCustomerDetails: initialValues?.showCustomerDetails ?? true,
   showItemsSku: initialValues?.showItemsSku ?? true,
+  showBrand: initialValues?.showBrand ?? true,
+  showSaleDescription: initialValues?.showSaleDescription ?? true,
   showQrCode: initialValues?.showQrCode ?? false,
+  showProductExpiry: initialValues?.showProductExpiry ?? true,
+  showLotNumber: initialValues?.showLotNumber ?? true,
+  showProductImage: initialValues?.showProductImage ?? true,
+  showWarrantyName: initialValues?.showWarrantyName ?? true,
+  showWarrantyExpiryDate: initialValues?.showWarrantyExpiryDate ?? true,
+  showWarrantyDescription: initialValues?.showWarrantyDescription ?? true,
   showTaxBreakdown: initialValues?.showTaxBreakdown ?? true,
   showDiscounts: initialValues?.showDiscounts ?? true,
+  showBarcode: initialValues?.showBarcode ?? true,
+  barcodeTotalDueLabel: initialValues?.barcodeTotalDueLabel ?? 'Due',
+  showTotalBalanceDue: initialValues?.showTotalBalanceDue ?? true,
+  barcodeChangeReturnLabel: initialValues?.barcodeChangeReturnLabel ?? 'Change return label',
+  hideAllPrices: initialValues?.hideAllPrices ?? false,
+  showTotalInWords: initialValues?.showTotalInWords ?? true,
+  barcodeWordFormat: initialValues?.barcodeWordFormat ?? 'international',
+  barcodeTaxSummaryLabel: initialValues?.barcodeTaxSummaryLabel ?? 'Tax summary label',
   headerAlignment: initialValues?.headerAlignment ?? 'center',
   logoUrl: initialValues?.logoUrl ?? '',
-  headerText: initialValues?.headerText ?? '<p><strong>INVOICE</strong></p>',
-  footerText: initialValues?.footerText ?? '<p>Thank you for your business.</p>',
+  qrShowLabels: initialValues?.qrShowLabels ?? true,
+  qrShowBusinessName: initialValues?.qrShowBusinessName ?? true,
+  qrShowBusinessLocationAddress: initialValues?.qrShowBusinessLocationAddress ?? true,
+  qrShowInvoiceNo: initialValues?.qrShowInvoiceNo ?? true,
+  qrShowSubtotal: initialValues?.qrShowSubtotal ?? true,
+  qrShowTotalAmountWithTax: initialValues?.qrShowTotalAmountWithTax ?? true,
+  qrShowTotalTax: initialValues?.qrShowTotalTax ?? true,
+  qrShowCustomerName: initialValues?.qrShowCustomerName ?? true,
+  qrShowInvoiceUrl: initialValues?.qrShowInvoiceUrl ?? true,
+  qrShowInvoiceDateTime: initialValues?.qrShowInvoiceDateTime ?? true,
+  qrShowBusinessTax1: initialValues?.qrShowBusinessTax1 ?? true,
   invoiceNote: initialValues?.invoiceNote ?? 'Payment is due upon receipt unless otherwise agreed.',
 });
 
@@ -131,16 +184,32 @@ export default function InvoiceLayoutEditor({
 
   const preview = useMemo(
     () => ({
-      company: 'Your Business Name',
-      address: '123 Market Street, Nairobi',
-      phone: '+254 700 000 000',
-      email: 'accounts@example.com',
-      customer: 'Jane Doe',
       invoiceNo: form.code || 'INV-0001',
       date: '11 Jul 2026',
+      customer: 'Jane Doe',
+      businessName: 'Your Business Name',
+      businessLocationAddress: '123 Market Street, Nairobi',
+      businessTax1: 'TAX-001',
+      invoiceUrl: `example.com/invoice/${form.code || 'INV-0001'}`,
       items: [
-        { name: 'Product One', sku: 'SKU-001', qty: 2, price: '1,250.00', total: '2,500.00' },
-        { name: 'Product Two', sku: 'SKU-002', qty: 1, price: '850.00', total: '850.00' },
+        {
+          name: 'Product One',
+          brand: 'Acme',
+          sku: 'SKU-001',
+          saleDescription: 'IMEI: 123456789012345',
+          qty: 2,
+          price: '1,250.00',
+          total: '2,500.00',
+        },
+        {
+          name: 'Product Two',
+          brand: 'Acme',
+          sku: 'SKU-002',
+          saleDescription: 'Serial Number: SN-0002',
+          qty: 1,
+          price: '850.00',
+          total: '850.00',
+        },
       ],
       subtotal: '3,350.00',
       tax: '335.00',
@@ -148,6 +217,40 @@ export default function InvoiceLayoutEditor({
       total: '3,685.00',
     }),
     [form.code],
+  );
+
+  const qrPayload = useMemo(() => {
+    const fields: string[] = [];
+
+    if (form.qrShowBusinessName) fields.push(`Business Name: ${preview.businessName}`);
+    if (form.qrShowBusinessLocationAddress) fields.push(`Business location address: ${preview.businessLocationAddress}`);
+    if (form.qrShowBusinessTax1) fields.push(`Business tax 1: ${preview.businessTax1}`);
+    if (form.qrShowInvoiceNo) fields.push(`Invoice No.: ${preview.invoiceNo}`);
+    if (form.qrShowInvoiceDateTime) fields.push(`Invoice Datetime: ${preview.date}`);
+    if (form.qrShowSubtotal) fields.push(`Subtotal: ${preview.subtotal}`);
+    if (form.qrShowTotalAmountWithTax) fields.push(`Total amount with tax: ${preview.total}`);
+    if (form.qrShowTotalTax) fields.push(`Total Tax: ${preview.tax}`);
+    if (form.qrShowCustomerName) fields.push(`Customer name: ${preview.customer}`);
+    if (form.qrShowInvoiceUrl) fields.push(`Invoice URL: ${preview.invoiceUrl}`);
+
+    return fields.length > 0 ? fields.join('\n') : `Invoice: ${preview.invoiceNo}`;
+  }, [
+    form.qrShowBusinessName,
+    form.qrShowBusinessLocationAddress,
+    form.qrShowBusinessTax1,
+    form.qrShowInvoiceNo,
+    form.qrShowInvoiceDateTime,
+    form.qrShowSubtotal,
+    form.qrShowTotalAmountWithTax,
+    form.qrShowTotalTax,
+    form.qrShowCustomerName,
+    form.qrShowInvoiceUrl,
+    preview,
+  ]);
+
+  const barcodeTotalInWords = useMemo(
+    () => formatAmountInWords(preview.total, form.barcodeWordFormat),
+    [form.barcodeWordFormat, preview.total],
   );
 
   const handleFieldChange = <K extends keyof InvoiceLayoutForm>(key: K, value: InvoiceLayoutForm[K]) => {
@@ -173,7 +276,7 @@ export default function InvoiceLayoutEditor({
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === 'string') {
-        setLogoPreviewUrl(reader.result as string);
+        setLogoPreviewUrl(reader.result);
         setLogoFileName(file.name);
       }
     };
@@ -192,11 +295,7 @@ export default function InvoiceLayoutEditor({
 
   const validate = () => {
     const nextErrors: string[] = [];
-
     if (!form.name.trim()) nextErrors.push('Layout name is required.');
-    if (!form.headerText.trim()) nextErrors.push('Header text cannot be empty.');
-    if (!form.footerText.trim()) nextErrors.push('Footer text cannot be empty.');
-
     setErrors(nextErrors);
     return nextErrors.length === 0;
   };
@@ -264,13 +363,10 @@ export default function InvoiceLayoutEditor({
       </div>
 
       {activeTab === 'format' ? (
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.8fr)]">
+        <div className="space-y-6">
           <div className="space-y-6">
-            <SectionCard
-              title="Layout Information"
-              description="Set the invoice layout identity and how it should render."
-            >
-              <div className="grid gap-4 md:grid-cols-2">
+            <SectionCard title="Layout Information" description="Set the invoice layout identity and how it should render.">
+              <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
                 <Field label="Layout Name" required>
                   <input
                     value={form.name}
@@ -342,11 +438,9 @@ export default function InvoiceLayoutEditor({
               <div className="mt-6 border-t border-border pt-5">
                 <div className="mb-4">
                   <h3 className="text-sm font-semibold text-foreground">Subheading Lines</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Optional lines that appear below the invoice title in the layout preview.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Optional lines that appear below the invoice title in the layout preview.</p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
                   <Field label="Subheading Line 1">
                     <input
                       value={form.subheadingLine1}
@@ -391,11 +485,77 @@ export default function InvoiceLayoutEditor({
               </div>
             </SectionCard>
 
-            <SectionCard
-              title="Display Options"
-              description="Toggle what should appear on the invoice printout."
-            >
-              <div className="grid gap-3 md:grid-cols-2">
+            <SectionCard title="Invoice Labels" description="Customize the wording used across the invoice preview and print layout.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <Field label="Product Label">
+                  <input
+                    value={form.productLabel}
+                    onChange={(event) => handleFieldChange('productLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Product"
+                  />
+                </Field>
+                <Field label="Quantity Label">
+                  <input
+                    value={form.quantityLabel}
+                    onChange={(event) => handleFieldChange('quantityLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Qty"
+                  />
+                </Field>
+                <Field label="Unit Price Label">
+                  <input
+                    value={form.unitPriceLabel}
+                    onChange={(event) => handleFieldChange('unitPriceLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Unit Price"
+                  />
+                </Field>
+                <Field label="Sub Total Label">
+                  <input
+                    value={form.subTotalLabel}
+                    onChange={(event) => handleFieldChange('subTotalLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Subtotal"
+                  />
+                </Field>
+                <Field label="Category / HSN Code Label">
+                  <input
+                    value={form.categoryHsnCodeLabel}
+                    onChange={(event) => handleFieldChange('categoryHsnCodeLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Category / HSN Code"
+                  />
+                </Field>
+                <Field label="Total Quantity Label">
+                  <input
+                    value={form.totalQuantityLabel}
+                    onChange={(event) => handleFieldChange('totalQuantityLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Total Quantity"
+                  />
+                </Field>
+                <Field label="Item Discount Label">
+                  <input
+                    value={form.itemDiscountLabel}
+                    onChange={(event) => handleFieldChange('itemDiscountLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Item Discount"
+                  />
+                </Field>
+                <Field label="Discounted Unit Price Label">
+                  <input
+                    value={form.discountedUnitPriceLabel}
+                    onChange={(event) => handleFieldChange('discountedUnitPriceLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Discounted Unit Price"
+                  />
+                </Field>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Display Options" description="Toggle what should appear on the invoice printout.">
+              <div className="grid gap-3 md:grid-cols-3">
                 <ToggleField label="Show Logo" checked={form.showLogo} onChange={(checked) => handleFieldChange('showLogo', checked)} />
                 <ToggleField
                   label="Show Business Details"
@@ -408,14 +568,49 @@ export default function InvoiceLayoutEditor({
                   onChange={(checked) => handleFieldChange('showCustomerDetails', checked)}
                 />
                 <ToggleField
-                  label="Show SKU"
+                  label="Show Brand"
+                  checked={form.showBrand}
+                  onChange={(checked) => handleFieldChange('showBrand', checked)}
+                />
+                <ToggleField
+                  label="Show Category Code / HSN Code"
                   checked={form.showItemsSku}
                   onChange={(checked) => handleFieldChange('showItemsSku', checked)}
                 />
                 <ToggleField
-                  label="Show QR Code"
-                  checked={form.showQrCode}
-                  onChange={(checked) => handleFieldChange('showQrCode', checked)}
+                  label="Show Sale Description"
+                  checked={form.showSaleDescription}
+                  onChange={(checked) => handleFieldChange('showSaleDescription', checked)}
+                />
+                <ToggleField
+                  label="Show Product Expiry"
+                  checked={form.showProductExpiry}
+                  onChange={(checked) => handleFieldChange('showProductExpiry', checked)}
+                />
+                <ToggleField
+                  label="Show Lot Number"
+                  checked={form.showLotNumber}
+                  onChange={(checked) => handleFieldChange('showLotNumber', checked)}
+                />
+                <ToggleField
+                  label="Show Product Image"
+                  checked={form.showProductImage}
+                  onChange={(checked) => handleFieldChange('showProductImage', checked)}
+                />
+                <ToggleField
+                  label="Show Warranty Name"
+                  checked={form.showWarrantyName}
+                  onChange={(checked) => handleFieldChange('showWarrantyName', checked)}
+                />
+                <ToggleField
+                  label="Show Warranty Expiry Date"
+                  checked={form.showWarrantyExpiryDate}
+                  onChange={(checked) => handleFieldChange('showWarrantyExpiryDate', checked)}
+                />
+                <ToggleField
+                  label="Show Warranty Description"
+                  checked={form.showWarrantyDescription}
+                  onChange={(checked) => handleFieldChange('showWarrantyDescription', checked)}
                 />
                 <ToggleField
                   label="Show Tax Breakdown"
@@ -430,121 +625,207 @@ export default function InvoiceLayoutEditor({
               </div>
             </SectionCard>
 
-            <SectionCard
-              title="Header and Footer"
-              description="Use the editor to style your header and footer text."
-            >
-              <div className="grid gap-6">
+            <SectionCard title="QR Code" description="Configure the QR code details and the labels that should appear with it.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <ToggleField
+                  label="Show QR Code"
+                  checked={form.showQrCode}
+                  onChange={(checked) => handleFieldChange('showQrCode', checked)}
+                />
+                <ToggleField
+                  label="Show Labels"
+                  checked={form.qrShowLabels}
+                  onChange={(checked) => handleFieldChange('qrShowLabels', checked)}
+                />
+              </div>
+              <div className="mt-6">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">Fields to be shown</h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <ToggleField
+                    label="Business Name"
+                    checked={form.qrShowBusinessName}
+                    onChange={(checked) => handleFieldChange('qrShowBusinessName', checked)}
+                  />
+                  <ToggleField
+                    label="Business location address"
+                    checked={form.qrShowBusinessLocationAddress}
+                    onChange={(checked) => handleFieldChange('qrShowBusinessLocationAddress', checked)}
+                  />
+                  <ToggleField
+                    label="Business tax 1"
+                    checked={form.qrShowBusinessTax1}
+                    onChange={(checked) => handleFieldChange('qrShowBusinessTax1', checked)}
+                  />
+                  <ToggleField
+                    label="Invoice No."
+                    checked={form.qrShowInvoiceNo}
+                    onChange={(checked) => handleFieldChange('qrShowInvoiceNo', checked)}
+                  />
+                  <ToggleField
+                    label="Invoice Datetime"
+                    checked={form.qrShowInvoiceDateTime}
+                    onChange={(checked) => handleFieldChange('qrShowInvoiceDateTime', checked)}
+                  />
+                  <ToggleField
+                    label="Subtotal"
+                    checked={form.qrShowSubtotal}
+                    onChange={(checked) => handleFieldChange('qrShowSubtotal', checked)}
+                  />
+                  <ToggleField
+                    label="Total amount with tax"
+                    checked={form.qrShowTotalAmountWithTax}
+                    onChange={(checked) => handleFieldChange('qrShowTotalAmountWithTax', checked)}
+                  />
+                  <ToggleField
+                    label="Total Tax"
+                    checked={form.qrShowTotalTax}
+                    onChange={(checked) => handleFieldChange('qrShowTotalTax', checked)}
+                  />
+                  <ToggleField
+                    label="Customer name"
+                    checked={form.qrShowCustomerName}
+                    onChange={(checked) => handleFieldChange('qrShowCustomerName', checked)}
+                  />
+                  <ToggleField
+                    label="Invoice URL"
+                    checked={form.qrShowInvoiceUrl}
+                    onChange={(checked) => handleFieldChange('qrShowInvoiceUrl', checked)}
+                  />
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Barcode" description="Configure barcode display, balance and pricing details for the invoice layout.">
+              <div className="grid gap-4 md:grid-cols-3">
+                <ToggleField
+                  label="Show Barcode"
+                  checked={form.showBarcode}
+                  onChange={(checked) => handleFieldChange('showBarcode', checked)}
+                />
                 <Field
-                  label="Logo"
-                  helperText="Optional. Upload an image or paste a public image URL for the invoice header logo."
+                  label="Total Due Label (All sales)"
+                  helperText="Used for the total due caption shown alongside the barcode."
                 >
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-3">
-                      <input
-                        value={form.logoUrl}
-                        onChange={(event) => handleFieldChange('logoUrl', event.target.value)}
-                        className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        placeholder="https://example.com/logo.png"
-                      />
-                      <input
-                        ref={logoInputRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        onChange={handleLogoSelect}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => logoInputRef.current?.click()}
-                        className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                      >
-                        <Upload className="h-4 w-4" />
-                        Choose Image
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveLogo}
-                        disabled={!form.logoUrl}
-                        className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remove
-                      </button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      You can paste a URL or upload an image file. PNG, JPEG and WEBP up to 5MB are supported.
-                    </p>
-                    {logoPreviewUrl || form.logoUrl ? (
-                      <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-alt p-3">
-                        <img
-                          src={logoPreviewUrl || form.logoUrl}
-                          alt="Logo preview"
-                          className="h-16 w-16 rounded-lg border border-border object-cover"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground">Logo preview</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {logoFileName || form.logoUrl}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-surface-alt p-3 text-sm text-muted-foreground">
-                        <ImagePlus className="h-4 w-4" />
-                        No logo selected yet.
-                      </div>
-                    )}
-                  </div>
-                </Field>
-
-                <Field label="Header Text" required>
-                  <RichTextEditor
-                    label="Header Text Editor"
-                    value={form.headerText}
-                    onChange={(value) => handleFieldChange('headerText', value)}
-                  />
-                </Field>
-
-                <Field label="Footer Text" required>
-                  <RichTextEditor
-                    label="Footer Text Editor"
-                    value={form.footerText}
-                    onChange={(value) => handleFieldChange('footerText', value)}
-                  />
-                </Field>
-
-                <Field label="Invoice Note">
-                  <textarea
-                    value={form.invoiceNote}
-                    onChange={(event) => handleFieldChange('invoiceNote', event.target.value)}
-                    rows={4}
+                  <input
+                    value={form.barcodeTotalDueLabel}
+                    onChange={(event) => handleFieldChange('barcodeTotalDueLabel', event.target.value)}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                    placeholder="Payment instructions or extra note..."
+                    placeholder="Due"
+                  />
+                </Field>
+                <ToggleField
+                  label="Show total balance due (All sales)"
+                  checked={form.showTotalBalanceDue}
+                  onChange={(checked) => handleFieldChange('showTotalBalanceDue', checked)}
+                />
+                <Field label="Change return label">
+                  <input
+                    value={form.barcodeChangeReturnLabel}
+                    onChange={(event) => handleFieldChange('barcodeChangeReturnLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Change return label"
+                  />
+                </Field>
+                <ToggleField
+                  label="Hide all prices"
+                  checked={form.hideAllPrices}
+                  onChange={(checked) => handleFieldChange('hideAllPrices', checked)}
+                />
+                <div className="space-y-2">
+                  <ToggleField
+                    label="Show total in words"
+                    checked={form.showTotalInWords}
+                    onChange={(checked) => handleFieldChange('showTotalInWords', checked)}
+                  />
+                  <p className="text-xs text-muted-foreground">Enable php-intl extension in PHP INI settings.</p>
+                </div>
+                <Field label="Word Format">
+                  <select
+                    value={form.barcodeWordFormat}
+                    onChange={(event) => handleFieldChange('barcodeWordFormat', event.target.value as 'international' | 'indian')}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="international">International</option> 
+                    <option value="indian">Indian</option>
+                  </select>
+                </Field>
+                <Field label="Tax summary label">
+                  <input
+                    value={form.barcodeTaxSummaryLabel}
+                    onChange={(event) => handleFieldChange('barcodeTaxSummaryLabel', event.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Tax summary label"
                   />
                 </Field>
               </div>
             </SectionCard>
-          </div>
 
-          <div className="space-y-6">
-            <SectionCard title="Quick Summary" description="This is what will be applied to your invoice layout.">
-              <dl className="space-y-4 text-sm">
-                <SummaryRow label="Layout Name" value={form.name || 'Untitled layout'} />
-                <SummaryRow label="Layout Code" value={form.code || 'auto-generated'} />
-                <SummaryRow label="Template" value={designLabels[form.design]} />
-                <SummaryRow label="Paper Size" value={paperLabels[form.paperSize]} />
-                <SummaryRow label="Header Alignment" value={headerAlignmentLabels[form.headerAlignment]} />
-                <SummaryRow label="Default" value={form.isDefault ? 'Yes' : 'No'} />
-              </dl>
+            <SectionCard title="Logo" description="Optional. Upload an image or paste a public image URL for the invoice header logo.">
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-3">
+                  <input
+                    value={form.logoUrl}
+                    onChange={(event) => handleFieldChange('logoUrl', event.target.value)}
+                    className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="https://example.com/logo.png"
+                  />
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleLogoSelect}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  >
+                    <Upload className="h-4 w-4" />
+                    Choose Image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveLogo}
+                    disabled={!form.logoUrl}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  You can paste a URL or upload an image file. PNG, JPEG and WEBP up to 5MB are supported.
+                </p>
+                {logoPreviewUrl || form.logoUrl ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-alt p-3">
+                    <img
+                      src={logoPreviewUrl || form.logoUrl}
+                      alt="Logo preview"
+                      className="h-16 w-16 rounded-lg border border-border object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">Logo preview</p>
+                      <p className="truncate text-xs text-muted-foreground">{logoFileName || form.logoUrl}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 rounded-lg border border-dashed border-border bg-surface-alt p-3 text-sm text-muted-foreground">
+                    <ImagePlus className="h-4 w-4" />
+                    No logo selected yet.
+                  </div>
+                )}
+              </div>
             </SectionCard>
 
-            <SectionCard title="Need a quick reminder?" description="We keep the format flexible, but the preview shows the final result.">
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <p>Header and footer use CKEditor so you can apply bold text, lists, links, and spacing.</p>
-                <p>Toggle the display options to control what your customers see on the invoice.</p>
-                <p>The preview tab updates from the same data you are editing here.</p>
-              </div>
+            <SectionCard title="Invoice Note" description="Add a short note that appears with the layout settings preview.">
+              <textarea
+                value={form.invoiceNote}
+                onChange={(event) => handleFieldChange('invoiceNote', event.target.value)}
+                rows={4}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                placeholder="Payment instructions or extra note..."
+              />
             </SectionCard>
           </div>
         </div>
@@ -552,8 +833,7 @@ export default function InvoiceLayoutEditor({
         <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
           <div className="rounded-2xl border border-border bg-background p-5 shadow-sm">
             <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Invoice Preview</p>
+              <div> 
                 <h2 className="text-xl font-bold text-foreground">{form.name || 'Untitled layout'}</h2>
               </div>
               <div className="rounded-lg bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
@@ -577,9 +857,7 @@ export default function InvoiceLayoutEditor({
                   ))}
                   <div>
                     <h3 className="text-lg font-bold text-slate-900">Your Business Name</h3>
-                    {form.showBusinessDetails && (
-                      <p className="text-xs text-slate-600">123 Market Street, Nairobi</p>
-                    )}
+                    {form.showBusinessDetails && <p className="text-xs text-slate-600">123 Market Street, Nairobi</p>}
                   </div>
                 </div>
                 <div className="text-right text-xs text-slate-600">
@@ -591,7 +869,7 @@ export default function InvoiceLayoutEditor({
 
               <div className="mb-5">
                 <div className={`mb-3 ${headerAlignmentClass(form.headerAlignment)} text-2xl font-extrabold tracking-wide`}>
-                  <div dangerouslySetInnerHTML={{ __html: form.headerText }} />
+                  INVOICE
                 </div>
                 {(form.subheadingLine1 || form.subheadingLine2 || form.subheadingLine3 || form.subheadingLine4 || form.subheadingLine5) && (
                   <div className="mb-3 space-y-1 text-sm text-slate-600">
@@ -614,17 +892,22 @@ export default function InvoiceLayoutEditor({
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-300 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="py-2">Item</th>
-                    {form.showItemsSku && <th className="py-2">SKU</th>}
-                    <th className="py-2 text-right">Qty</th>
-                    <th className="py-2 text-right">Price</th>
-                    <th className="py-2 text-right">Total</th>
+                    <th className="py-2">{form.productLabel}</th>
+                    {form.showBrand && <th className="py-2">Brand</th>}
+                    {form.showItemsSku && <th className="py-2">{form.categoryHsnCodeLabel}</th>}
+                    <th className="py-2 text-right">{form.quantityLabel}</th>
+                    <th className="py-2 text-right">{form.unitPriceLabel}</th>
+                    <th className="py-2 text-right">{form.subTotalLabel}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {preview.items.map((item) => (
                     <tr key={item.name} className="border-b border-slate-200">
-                      <td className="py-3 font-medium text-slate-900">{item.name}</td>
+                      <td className="py-3 font-medium text-slate-900">
+                        <div>{item.name}</div>
+                        {form.showSaleDescription && <div className="mt-1 text-xs font-normal text-slate-500">{item.saleDescription}</div>}
+                      </td>
+                      {form.showBrand && <td className="py-3 text-slate-600">{item.brand}</td>}
                       {form.showItemsSku && <td className="py-3 text-slate-600">{item.sku}</td>}
                       <td className="py-3 text-right text-slate-600">{item.qty}</td>
                       <td className="py-3 text-right text-slate-600">{item.price}</td>
@@ -636,15 +919,43 @@ export default function InvoiceLayoutEditor({
 
               <div className="mt-5 flex justify-end">
                 <div className="w-full max-w-xs space-y-2 rounded-xl bg-slate-50 p-4 text-sm">
-                  <SummaryLine label="Subtotal" value={preview.subtotal} />
+                  <SummaryLine label={form.subTotalLabel} value={preview.subtotal} />
                   {form.showTaxBreakdown && <SummaryLine label="Tax" value={preview.tax} />}
                   {form.showDiscounts && <SummaryLine label="Discount" value={preview.discount} />}
                   <SummaryLine label="Total" value={preview.total} emphasized />
                 </div>
               </div>
 
-              <div className="mt-5 border-t border-dashed border-slate-300 pt-4">
-                <div className="prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: form.footerText }} />
+              <div className="mt-5 grid gap-2 border-t border-dashed border-slate-300 pt-4 text-xs text-slate-600 sm:grid-cols-2">
+                <p>{form.totalQuantityLabel}: {preview.items.reduce((sum, item) => sum + item.qty, 0)}</p>
+                <p>{form.itemDiscountLabel}: {preview.discount}</p>
+              </div>
+
+              {(form.showQrCode || form.showBarcode) && (
+                <div className="mt-6 border-t border-dashed border-slate-300 pt-6">
+                  <div className="flex w-full flex-wrap items-center justify-start gap-10">
+                    {form.showQrCode && <QRCode value={qrPayload} size={144} className="h-32 w-32" />}
+                    {form.showBarcode && (
+                      <div className="flex flex-col items-start gap-2 overflow-hidden">
+                        <Barcode
+                          value={preview.invoiceNo}
+                          format="CODE128"
+                          width={1.8}
+                          height={68}
+                          fontSize={14}
+                          displayValue={false}
+                          background="transparent"
+                          lineColor="#111827"
+                        />
+                        {form.showTotalInWords && <p className="w-full text-left text-xs text-slate-600">{capitalizeFirstLetter(barcodeTotalInWords)}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 border-t border-dashed border-slate-300 pt-4 text-sm text-slate-700">
+                Thank you for your business.
               </div>
             </div>
           </div>
@@ -655,13 +966,34 @@ export default function InvoiceLayoutEditor({
                 <p>Logo: {form.showLogo ? 'Shown' : 'Hidden'}</p>
                 <p>Business details: {form.showBusinessDetails ? 'Shown' : 'Hidden'}</p>
                 <p>Customer details: {form.showCustomerDetails ? 'Shown' : 'Hidden'}</p>
-                <p>SKUs: {form.showItemsSku ? 'Shown' : 'Hidden'}</p>
-                <p>QR code: {form.showQrCode ? 'Shown' : 'Hidden'}</p>
+                <p>Brand: {form.showBrand ? 'Shown' : 'Hidden'}</p>
+                <p>Category / HSN code: {form.showItemsSku ? 'Shown' : 'Hidden'}</p>
+                <p>Sale description: {form.showSaleDescription ? 'Shown' : 'Hidden'}</p>
+                <p>Product expiry: {form.showProductExpiry ? 'Shown' : 'Hidden'}</p>
+                <p>Lot number: {form.showLotNumber ? 'Shown' : 'Hidden'}</p>
+                <p>Product image: {form.showProductImage ? 'Shown' : 'Hidden'}</p>
+                <p>Warranty name: {form.showWarrantyName ? 'Shown' : 'Hidden'}</p>
+                <p>Warranty expiry date: {form.showWarrantyExpiryDate ? 'Shown' : 'Hidden'}</p>
+                <p>Warranty description: {form.showWarrantyDescription ? 'Shown' : 'Hidden'}</p>
+                <p>Barcode: {form.showBarcode ? 'Shown' : 'Hidden'}</p>
               </div>
             </SectionCard>
-            <SectionCard title="Footer text" description="The preview below uses your live CKEditor content.">
-              <div className="rounded-lg border border-border bg-surface-alt p-4 text-sm text-foreground">
-                <div dangerouslySetInnerHTML={{ __html: form.footerText }} />
+
+            <SectionCard title="Quick Summary" description="This is what will be applied to your invoice layout.">
+              <dl className="space-y-4 text-sm">
+                <SummaryRow label="Layout Name" value={form.name || 'Untitled layout'} />
+                <SummaryRow label="Layout Code" value={form.code || 'auto-generated'} />
+                <SummaryRow label="Template" value={designLabels[form.design]} />
+                <SummaryRow label="Paper Size" value={paperLabels[form.paperSize]} />
+                <SummaryRow label="Header Alignment" value={headerAlignmentLabels[form.headerAlignment]} />
+                <SummaryRow label="Default" value={form.isDefault ? 'Yes' : 'No'} />
+              </dl>
+            </SectionCard>
+
+            <SectionCard title="Need a quick reminder?" description="We keep the format flexible, but the preview shows the final result.">
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>Toggle the display options to control what your customers see on the invoice.</p>
+                <p>The preview tab updates from the same data you are editing here.</p>
               </div>
             </SectionCard>
           </div>
@@ -685,9 +1017,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`-mb-px inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm font-medium transition-colors ${
-        active
-          ? 'border-primary text-primary'
-          : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+        active ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
       }`}
     >
       {children}
@@ -705,7 +1035,7 @@ function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="bg-card p-5 shadow-sm">
       <div className="mb-4">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
@@ -727,14 +1057,14 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block space-y-2">
+    <div className="block space-y-2">
       <div className="flex items-center gap-1 text-sm font-medium text-foreground">
         <span>{label}</span>
         {required && <span className="text-red-500">*</span>}
       </div>
       {helperText && <p className="text-xs text-muted-foreground">{helperText}</p>}
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -810,83 +1140,21 @@ function headerAlignmentClass(align: HeaderAlignment) {
   }
 }
 
-function RichTextEditor({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  const editorRef = useRef<ClassicEditor | null>(null);
+function formatAmountInWords(amount: string, format: 'international' | 'indian') {
+  const numericAmount = Number.parseFloat(amount.replace(/,/g, ''));
+  if (Number.isNaN(numericAmount)) {
+    return '';
+  }
 
-  useEffect(() => {
-    if (!editorRef.current) return;
-    if (editorRef.current.getData() !== value) {
-      editorRef.current.setData(value);
-    }
-  }, [value]);
+  const whole = Math.floor(numericAmount);
+  const fraction = Math.round((numericAmount - whole) * 100);
+  const wholeWords = toWords(whole);
+  const fractionWords = fraction > 0 ? ` and ${toWords(fraction)} ${format === 'indian' ? 'paise' : 'cents'}` : '';
 
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm">
-      <div className="border-b border-border bg-surface-alt px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="ck-editor-host">
-        <CKEditor
-          editor={ClassicEditor}
-          data={value}
-          config={{
-            plugins: [
-              Essentials,
-              Autoformat,
-              Paragraph,
-              Heading,
-              Bold,
-              Italic,
-              Underline,
-              Strikethrough,
-              Link,
-              List,
-              RemoveFormat,
-            ],
-            toolbar: [
-              'undo',
-              'redo',
-              '|',
-              'heading',
-              '|',
-              'bold',
-              'italic',
-              'underline',
-              'strikethrough',
-              'removeFormat',
-              '|',
-              'link',
-              'bulletedList',
-              'numberedList',
-            ],
-            heading: {
-              options: [
-                { model: 'paragraph', title: 'Paragraph', class: 'ck-heading_paragraph' },
-                { model: 'heading1', view: 'h1', title: 'Heading 1', class: 'ck-heading_heading1' },
-                { model: 'heading2', view: 'h2', title: 'Heading 2', class: 'ck-heading_heading2' },
-              ],
-            },
-            link: {
-              addTargetToExternalLinks: true,
-              defaultProtocol: 'https://',
-            },
-          }}
-          onReady={(editor) => {
-            editorRef.current = editor as ClassicEditor;
-          }}
-          onChange={(_, editor) => {
-            onChange(editor.getData());
-          }}
-        />
-      </div>
-    </div>
-  );
+  return `${wholeWords}${fractionWords}`;
+}
+
+function capitalizeFirstLetter(value: string) {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

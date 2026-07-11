@@ -10,13 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ckeditor/ckeditor5-react": "^11.2.0",
     "@tailwindcss/vite": "^4.3.2",
-    "ckeditor5": "^48.3.0",
     "lucide-react": "^1.23.0",
+    "number-to-words": "^1.2.4",
     "react": "^19.2.7",
+    "react-barcode": "^1.6.1",
     "react-dom": "^19.2.7",
     "react-hot-toast": "^2.6.0",
+    "react-qr-code": "^2.2.0",
     "react-router-dom": "^7.18.1",
     "react-select": "^5.10.2",
     "tailwindcss": "^4.3.2",
