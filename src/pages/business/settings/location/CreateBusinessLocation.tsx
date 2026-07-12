@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useBusinessLocations, type BusinessLocationRecord, type CreateBusinessLocationInput } from '@/hooks/business/settings/useBusinessLocations';
 import { ApiError } from '@/lib/api';
+import { normalizePhoneNumber } from '@/lib/phone';
+import PhoneNumberInput from '@/components/forms/PhoneNumberInput';
 import SettingsTabShell from '../SettingsTabShell';
 
 type SelectOption = {
@@ -605,7 +607,9 @@ export default function CreateBusinessLocation() {
 
     if (!form.locationName.trim()) nextErrors.locationName = 'Location name is required.';
     if (!form.locationId.trim()) nextErrors.locationId = 'Location ID is required.';
-    if (!form.mobile.trim()) nextErrors.mobile = 'Mobile number is required.';
+    const normalizedMobile = normalizePhoneNumber(form.mobile);
+    if (!normalizedMobile) nextErrors.mobile = 'Mobile number is required.';
+    else if (normalizedMobile.length !== 10) nextErrors.mobile = 'Mobile number must start with 0 and contain 10 digits.';
     if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) nextErrors.email = 'Enter a valid email address.';
     if (form.paymentMethods.length === 0) nextErrors.paymentMethods = 'Select at least one payment method.';
     if (form.latitude.trim() && Number.isNaN(Number(form.latitude))) {
@@ -912,7 +916,7 @@ export default function CreateBusinessLocation() {
             {/* Contact */}
             <Section icon={Phone} title="Contact Information" description="How customers and staff can reach this location.">
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-                <Field
+                <PhoneNumberInput
                   label="Mobile"
                   required
                   placeholder="e.g. 0712 345 678"
@@ -920,11 +924,12 @@ export default function CreateBusinessLocation() {
                   error={errors.mobile}
                   onChange={(value) => updateField('mobile', value)}
                 />
-                <Field
+                <PhoneNumberInput
                   label="Alternate Contact Number"
                   placeholder="Optional second number"
                   value={form.alternateContactNumber}
                   onChange={(value) => updateField('alternateContactNumber', value)}
+                  helperText="Optional second number."
                 />
                 <Field
                   label="Email"

@@ -23,6 +23,7 @@ import CreateBusinessLocation from './pages/business/settings/location/CreateBus
 import InvoiceSettings from './pages/business/settings/invoice/InvoiceSettings'
 import CreateInvoiceSettings from './pages/business/settings/invoice/CreateInvoiceSettings'
 import EditInvoiceSettings from './pages/business/settings/invoice/EditInvoiceSettings'
+import Suppliers from './pages/business/contacts/Suppliers'
 
 function App() {
   return (
@@ -57,16 +58,16 @@ function App() {
           <Route path="/inventory/subcategories/create" element={<CreateSubCategory />} />
 
           {/* SETTINGS */}
-
-
-          {/* BUSINESS SETTINGS */}
-
           <Route path="/business/settings" element={<BusinessSettings />} />
           <Route path="/business/locations" element={<BusinessLocations />} />
           <Route path="/business/locations/create" element={<CreateBusinessLocation />} />
           <Route path="/business/invoice-settings" element={<InvoiceSettings />} />
           <Route path="/business/invoice-settings/create" element={<CreateInvoiceSettings />} />
           <Route path="/business/invoice-settings/:id/edit" element={<EditInvoiceSettings />} />
+
+
+          {/* CONTACTS */}
+          <Route path="/contacts/suppliers" element={<Suppliers />} />
         </Route>
       </Route>
 

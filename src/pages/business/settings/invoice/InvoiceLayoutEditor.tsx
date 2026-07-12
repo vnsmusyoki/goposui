@@ -76,7 +76,10 @@ type InvoiceLayoutEditorProps = {
   title: string;
   subtitle: string;
   initialValues?: Partial<InvoiceLayoutForm>;
+  initialTab?: EditorTab;
   submitLabel?: string;
+  isSaving?: boolean;
+  onSubmit?: (values: InvoiceLayoutForm) => Promise<unknown> | void;
 };
 
 const designLabels: Record<LayoutDesign, string> = {
@@ -160,10 +163,13 @@ export default function InvoiceLayoutEditor({
   title,
   subtitle,
   initialValues,
+  initialTab = 'format',
   submitLabel,
+  isSaving = false,
+  onSubmit,
 }: InvoiceLayoutEditorProps) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<EditorTab>('format');
+  const [activeTab, setActiveTab] = useState<EditorTab>(initialTab);
   const [form, setForm] = useState(() => initialForm(initialValues));
   const [errors, setErrors] = useState<string[]>([]);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
@@ -175,6 +181,10 @@ export default function InvoiceLayoutEditor({
     setLogoPreviewUrl(initialValues?.logoUrl ?? '');
     setLogoFileName('');
   }, [initialValues]);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     if (!form.code && form.name.trim()) {
@@ -300,14 +310,24 @@ export default function InvoiceLayoutEditor({
     return nextErrors.length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) {
       toast.error('Please fix the highlighted errors before saving.');
       return;
     }
 
-    toast.success(mode === 'edit' ? 'Invoice layout updated successfully.' : 'Invoice layout created successfully.');
-    navigate('/business/invoice-settings');
+    try {
+      if (onSubmit) {
+        await onSubmit(form);
+      }
+
+      toast.success(mode === 'edit' ? 'Invoice layout updated successfully.' : 'Invoice layout created successfully.');
+      navigate('/business/invoice-settings');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save invoice layout.';
+      setErrors([message]);
+      toast.error(message);
+    }
   };
 
   return (
@@ -333,10 +353,11 @@ export default function InvoiceLayoutEditor({
         <button
           type="button"
           onClick={handleSubmit}
+          disabled={isSaving}
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
           <Save className="h-4 w-4" />
-          {submitLabel ?? (mode === 'edit' ? 'Update Layout' : 'Save Layout')}
+          {isSaving ? 'Saving...' : submitLabel ?? (mode === 'edit' ? 'Update Layout' : 'Save Layout')}
         </button>
       </div>
 
