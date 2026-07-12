@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type FocusEventHandler } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type FocusEventHandler } from 'react';
 import Select, { type StylesConfig } from 'react-select';
 import DatePickerField from '@/components/forms/DatePickerField';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
@@ -45,8 +45,13 @@ import { useBusinessLocations, type BusinessLocationRecord } from '@/hooks/busin
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
 import { useProductSettings } from '@/hooks/business/settings/useProductSettings';
 import { useSubCategories, type SubCategoryItem } from '@/hooks/business/subcategories/useSubCategories';
-import { useProducts, type CreateProductPayload, type ProductSearchResult } from '@/hooks/business/products/useProducts';
-import { useNavigate } from 'react-router-dom';
+import {
+  useProducts,
+  type CreateProductPayload,
+  type ProductDetailItem,
+  type ProductSearchResult,
+} from '@/hooks/business/products/useProducts';
+import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { ApiError } from '@/lib/api';
 import { formatProductSkuDisplay } from '@/lib/productSku';
@@ -130,6 +135,9 @@ type FormState = {
   defaultSellingPrice: number;
   images: ProductImage[];
   brochure: File | null;
+  brochureName: string;
+  brochureUrl: string;
+  brochureRemoved: boolean;
 };
 
 const INITIAL_FORM_STATE: FormState = {
@@ -163,6 +171,9 @@ const INITIAL_FORM_STATE: FormState = {
   defaultSellingPrice: 0,
   images: [],
   brochure: null,
+  brochureName: '',
+  brochureUrl: '',
+  brochureRemoved: false,
 };
 
 /* ---------------------------------------------------------------------- */
@@ -424,7 +435,9 @@ const PRODUCT_TYPES: { value: ProductType; label: string; description: string }[
 /*  Main component                                                        */
 /* ---------------------------------------------------------------------- */
 
-export default function CreateProduct() {
+export default function EditProduct() {
+  const { id: productId = '' } = useParams<{ id: string }>();
+  const isEditMode = Boolean(productId);
   const { units, loadUnits } = useBusinessUnits();
   const { categories, fetchCategories } = useCategories();
   const { brands, loadBrands } = useBusinessBrands();
@@ -432,7 +445,7 @@ export default function CreateProduct() {
   const { settings: businessSettings } = useBusinessSettings();
   const { settings: productSettings } = useProductSettings();
   const { subCategories, fetchSubCategories } = useSubCategories();
-  const { createProduct, searchProducts } = useProducts();
+  const { createProduct, updateProduct, getProductById, searchProducts } = useProducts();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState<FormState>(INITIAL_FORM_STATE);
@@ -466,6 +479,7 @@ export default function CreateProduct() {
   const [variantModalError, setVariantModalError] = useState<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [isImageDragging, setIsImageDragging] = useState(false);
   const [imageUploadErrors, setImageUploadErrors] = useState<string[]>([]);
   const [isBrochureDragging, setIsBrochureDragging] = useState(false);
@@ -606,6 +620,120 @@ export default function CreateProduct() {
       defaultSellingPrice: sellingPrice,
     }));
   };
+
+  const applyProductDetailToForm = useCallback((product: ProductDetailItem) => {
+    setFormData({
+      name: product.name ?? '',
+      sku: product.sku ?? '',
+      barcode: product.barcode ?? '',
+      unitId: product.unitId ?? '',
+      subUnitIds: product.subUnitIds ?? [],
+      brandId: product.brandId ?? '',
+      categoryId: product.categoryId ?? '',
+      subCategoryId: product.subCategoryId ?? '',
+      locationIds: product.locationIds ?? [],
+      allLocations: product.allLocations ?? false,
+      manageStock: product.manageStock ?? false,
+      alertQuantity: product.alertQuantity ?? 2,
+      warranty: {
+        hasWarranty: product.hasWarranty ?? false,
+        duration: product.warrantyDuration ?? '',
+        period: product.warrantyPeriod === 'years' ? 'years' : 'months',
+        coverage: product.warrantyCoverage ?? '',
+      },
+      description: product.description ?? '',
+      productType: product.productType ?? 'single',
+      isForSelling: product.isForSelling ?? true,
+      taxType: (product.taxType as TaxType) ?? 'exclusive',
+      taxRate: product.taxRate ?? 0,
+      defaultPurchasePrice: product.defaultPurchasePrice ?? 0,
+      purchasePriceExclusive: product.purchasePriceExclusive ?? 0,
+      purchasePriceInclusive: product.purchasePriceInclusive ?? 0,
+      profitMargin: product.profitMargin ?? 0,
+      defaultSellingPrice: product.defaultSellingPrice ?? 0,
+      images: (product.images ?? []).map((image) => ({
+        id: image.id,
+        name: image.name,
+        url: image.url,
+        isPrimary: image.isPrimary,
+      })),
+      brochure: null,
+      brochureName: product.brochureName ?? '',
+      brochureUrl: product.brochureUrl ?? '',
+      brochureRemoved: false,
+    });
+
+    setComboItems(
+      (product.comboItems ?? []).map((item) => ({
+        id: item.id,
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        quantity: item.quantity,
+        priceEach: item.priceEach,
+        subtotal: item.subtotal,
+        unit: item.unit,
+      })),
+    );
+
+    setVariants(
+      (product.variants ?? []).map((variant) => ({
+        id: variant.id,
+        name: variant.name,
+        sku: variant.sku,
+        barcode: variant.barcode,
+        cost: variant.cost,
+        selling: variant.selling,
+        stock: variant.stock,
+        showOptionalFields: variant.showOptionalFields,
+        weight: variant.weight,
+        length: variant.length,
+        width: variant.width,
+        height: variant.height,
+        imageName: variant.imageName,
+        imageUrl: variant.imageUrl,
+        imageFile: null,
+        reorderLevel: variant.reorderLevel ?? 0,
+        expiryDate: variant.expiryDate,
+        supplierCode: variant.supplierCode,
+      })),
+    );
+
+    setPurchasePriceInput(product.defaultPurchasePrice ? String(product.defaultPurchasePrice) : '');
+    setSellingPriceInput(product.defaultSellingPrice ? String(product.defaultSellingPrice) : '');
+    setComboSellingPriceInput(product.defaultSellingPrice ? String(product.defaultSellingPrice) : '');
+    setIsSellingPriceManual(true);
+    setComboSellingPriceManual(true);
+    setHasAppliedBusinessProfit(true);
+    setImageUploadErrors([]);
+    setBrochureUploadError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!isEditMode || !productId) return;
+
+    let isMounted = true;
+    setIsLoadingProduct(true);
+
+    void getProductById(productId)
+      .then((product) => {
+        if (!isMounted) return;
+        applyProductDetailToForm(product);
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        const message = err instanceof Error ? err.message : 'Unable to load product.';
+        toast.error(message);
+        navigate('/products/list');
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingProduct(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [applyProductDetailToForm, getProductById, isEditMode, navigate, productId]);
 
   const resetComboDraft = () => {
     setComboItemDraftQuery('');
@@ -924,7 +1052,7 @@ export default function CreateProduct() {
       }
 
       setBrochureUploadError(null);
-      setFormData((prev) => ({ ...prev, brochure: file }));
+      setFormData((prev) => ({ ...prev, brochure: file, brochureRemoved: false }));
     }
     e.target.value = '';
   };
@@ -941,7 +1069,14 @@ export default function CreateProduct() {
     handleBrochureUpload(syntheticEvent);
   };
 
-  const removeBrochure = () => setFormData((prev) => ({ ...prev, brochure: null }));
+  const removeBrochure = () =>
+    setFormData((prev) => ({
+      ...prev,
+      brochure: null,
+      brochureName: '',
+      brochureUrl: '',
+      brochureRemoved: true,
+    }));
 
   const handleAddComboItem = (item: ComboItem) => {
     setComboItems((prev) => [...prev, item]);
@@ -1003,6 +1138,8 @@ export default function CreateProduct() {
       );
 
       const brochureUrl = formData.brochure ? await fileToDataURL(formData.brochure) : '';
+      const brochureName = formData.brochure ? formData.brochure.name : formData.brochureRemoved ? '' : formData.brochureName;
+      const brochureLink = formData.brochure ? brochureUrl : formData.brochureRemoved ? '' : formData.brochureUrl;
 
       const payload: CreateProductPayload = {
         name: formData.name.trim(),
@@ -1031,8 +1168,8 @@ export default function CreateProduct() {
         warranty_duration: formData.warranty.duration,
         warranty_period: formData.warranty.period,
         warranty_coverage: formData.warranty.coverage,
-        brochure_name: formData.brochure ? formData.brochure.name : '',
-        brochure_url: brochureUrl,
+        brochure_name: brochureName,
+        brochure_url: brochureLink,
         currency_code: currencyCode,
         currency_symbol_placement: currencyPlacement,
         currency_precision: currencyPrecision,
@@ -1068,7 +1205,7 @@ export default function CreateProduct() {
         ),
       };
 
-      const response = await createProduct(payload);
+      const response = isEditMode && productId ? await updateProduct(productId, payload) : await createProduct(payload);
       toast.success(response.message || 'Product created successfully');
       setErrors({});
       setFormSubmitError(null);
@@ -1085,6 +1222,12 @@ export default function CreateProduct() {
         setHasAppliedBusinessProfit(false);
         resetComboDraft();
         resetVariantDraft();
+      } else if (isEditMode) {
+        // Keep the loaded data in sync with the latest save result.
+        setFormData((prev) => ({
+          ...prev,
+          brochureRemoved: false,
+        }));
       }
 
       setIsSaving(false);
@@ -1136,14 +1279,20 @@ export default function CreateProduct() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Create Product</h1>
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">{isEditMode ? 'Edit Product' : 'Create Product'}</h1>
               <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">
-                Add a new product to your inventory
+                {isEditMode ? 'Update the saved product details' : 'Add a new product to your inventory'}
               </p>
             </div>
           </div>
         </div>
       </div>
+
+      {isLoadingProduct ? (
+        <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Loading product details...
+        </div>
+      ) : null}
 
       {errorList.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
@@ -1911,19 +2060,30 @@ export default function CreateProduct() {
           <div className="mt-6">
             <FieldLabel>Product Brochure</FieldLabel>
             <div className="mt-2">
-              {formData.brochure ? (
+              {formData.brochure || formData.brochureUrl ? (
                 <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-center gap-3">
                     <FileText className="h-8 w-8 shrink-0 text-primary" />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">{formData.brochure.name}</p>
-                      <p className="text-xs text-muted-foreground">{(formData.brochure.size / 1024).toFixed(2)} KB</p>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {formData.brochure?.name ?? formData.brochureName ?? 'Existing brochure'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.brochure
+                          ? `${(formData.brochure.size / 1024).toFixed(2)} KB`
+                          : formData.brochureUrl
+                            ? 'Saved brochure'
+                            : ''}
+                      </p>
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
                       aria-label="Download brochure"
+                      onClick={() => {
+                        if (formData.brochureUrl) window.open(formData.brochureUrl, '_blank', 'noopener,noreferrer');
+                      }}
                       className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-alt"
                     >
                       <Download className="h-4 w-4" />
@@ -1981,33 +2141,57 @@ export default function CreateProduct() {
         </SectionCard>
 
         <div className="flex flex-col-reverse gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={() => void handleSaveAndAddAnother()}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Save &amp; Add Another</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSaveAndAddStock()}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
-          >
-            <Package className="h-4 w-4" />
-            <span>Save &amp; Add Opening Stock</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            <Save className="h-4 w-4" />
-            <span>Save Product</span>
-          </button>
+          {isEditMode ? (
+            <>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
+              >
+                <span>Cancel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={isSaving || isLoadingProduct}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>Update Product</span>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleSaveAndAddAnother()}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Save &amp; Add Another</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveAndAddStock()}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
+              >
+                <Package className="h-4 w-4" />
+                <span>Save &amp; Add Opening Stock</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={isSaving}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>Save Product</span>
+              </button>
+            </>
+          )}
         </div>
 
         {previewImage && (

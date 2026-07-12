@@ -3,13 +3,13 @@ import toast from 'react-hot-toast';
 import Select, { type StylesConfig } from 'react-select';
 import {
   Building2,
-  Calendar,
   CircleDollarSign,
   Globe2,
   PackageSearch,
   Upload,
   X,
 } from 'lucide-react';
+import DatePickerField from '@/components/forms/DatePickerField';
 import { ApiError } from '@/lib/api';
 import {
   type BusinessSettingsRecord,
@@ -432,17 +432,12 @@ export default function BusinessSettingsBusinessTab() {
 
                 <label className="block">
                   <span className="mb-1 block text-sm font-medium text-foreground">Start date</span>
-                  <div className="relative">
-                    <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="date"
-                      value={form.startDate}
-                      onChange={(event) => updateField('startDate', event.target.value)}
-                      className={`w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${
-                        errors.startDate ? 'border-red-500' : 'border-border'
-                      }`}
-                    />
-                  </div>
+                  <DatePickerField
+                    value={form.startDate}
+                    onChange={(value) => updateField('startDate', value)}
+                    placeholder="Select business start date"
+                    error={Boolean(errors.startDate)}
+                  />
                   {errors.startDate && <p className="mt-1 text-xs text-red-600">{errors.startDate}</p>}
                 </label>
               </div>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState, useMemo } from 'react';
-import { 
+import {
   ArrowDownLeft, 
   ArrowUpRight, 
   BadgeDollarSign, 
@@ -20,6 +20,7 @@ import {
 import type { SupplierProfileData } from './supplierProfileTypes';
 import { useBusinessCurrency } from '@/business/businessStore';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
+import DatePickerField from '@/components/forms/DatePickerField';
 
 type Props = {
   supplier: SupplierProfileData;
@@ -307,17 +308,15 @@ export default function SupplierProfileLedgerTab({ supplier }: Props) {
             <div>
               <label className="text-xs font-medium text-muted-foreground">Date Range</label>
               <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                <input
-                  type="date"
+                <DatePickerField
                   value={dateRange.start}
-                  onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                  className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                  onChange={(value) => setDateRange({ ...dateRange, start: value })}
+                  placeholder="From"
                 />
-                <input
-                  type="date"
+                <DatePickerField
                   value={dateRange.end}
-                  onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                  className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                  onChange={(value) => setDateRange({ ...dateRange, end: value })}
+                  placeholder="To"
                 />
               </div>
             </div>

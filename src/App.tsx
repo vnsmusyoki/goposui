@@ -33,6 +33,9 @@ import EditBusinessCategory from './pages/business/categories/EditBusinessCatego
 import EditSubCategory from './pages/business/subcategories/EditSubCategory'
 import BrandsList from './pages/business/brands/BrandsList'
 import WarrantiesList from './pages/business/warranties/WarrantiesList'
+import EditProduct from './pages/business/products/EditProduct'
+import ProductDetails from './pages/business/products/ProductDetails'
+import ProductOpeningStock from './pages/business/products/ProductOpeningStock'
 
 function App() {
   return (
@@ -95,6 +98,9 @@ function App() {
           {/* PRODUCTS */}
           <Route path="/products/list" element={<ProductsList />} />
           <Route path="/products/create" element={<CreateProduct />} />
+          <Route path="/products/:id/edit" element={<EditProduct />} />
+          <Route path="/products/:id/view" element={<ProductDetails />} />
+          <Route path="/products/:id/opening-stock" element={<ProductOpeningStock />} />
         </Route>
       </Route>
 

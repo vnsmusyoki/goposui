@@ -32,6 +32,7 @@ import {
 import type { SupplierProfileData } from './supplierProfileTypes';
 import { useBusinessCurrency } from '@/business/businessStore';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
+import DatePickerField from '@/components/forms/DatePickerField';
 
 type Props = {
   supplier: SupplierProfileData;
@@ -617,17 +618,15 @@ export default function SupplierProfilePurchasesTab({ supplier }: Props) {
               <div className="md:col-span-2">
                 <label className="text-xs font-medium text-muted-foreground">Custom Range</label>
                 <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                  <input
-                    type="date"
+                  <DatePickerField
                     value={customDateRange.start}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
-                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    onChange={(value) => setCustomDateRange({ ...customDateRange, start: value })}
+                    placeholder="From"
                   />
-                  <input
-                    type="date"
+                  <DatePickerField
                     value={customDateRange.end}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
-                    className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
+                    onChange={(value) => setCustomDateRange({ ...customDateRange, end: value })}
+                    placeholder="To"
                   />
                 </div>
               </div>

@@ -18,6 +18,7 @@ export type BusinessSettingsRecord = {
   timeFormat: string;
   currencyPrecision: number | null;
   quantityPrecision: number | null;
+  skuPrefix?: string;
   message?: string;
 };
 

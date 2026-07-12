@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import type { SupplierProfileData } from './supplierProfileTypes';
 import { useBusinessCurrency } from '@/business/businessStore';
+import DatePickerField from '@/components/forms/DatePickerField';
 
 type Props = {
   supplier: SupplierProfileData;
@@ -609,22 +610,24 @@ export default function SupplierProfileActivitiesTab({ supplier }: Props) {
             
             <div>
               <label className="text-xs font-medium text-muted-foreground">Date Range - From</label>
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-              />
+              <div className="mt-1">
+                <DatePickerField
+                  value={dateRange.start}
+                  onChange={(value) => setDateRange({ ...dateRange, start: value })}
+                  placeholder="From"
+                />
+              </div>
             </div>
             
             <div>
               <label className="text-xs font-medium text-muted-foreground">Date Range - To</label>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground"
-              />
+              <div className="mt-1">
+                <DatePickerField
+                  value={dateRange.end}
+                  onChange={(value) => setDateRange({ ...dateRange, end: value })}
+                  placeholder="To"
+                />
+              </div>
             </div>
             
             <div>

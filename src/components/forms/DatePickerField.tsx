@@ -1,0 +1,49 @@
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { Calendar } from 'lucide-react';
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+type DatePickerFieldProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  minDate?: Date;
+  maxDate?: Date;
+  className?: string;
+  error?: boolean;
+};
+
+export default function DatePickerField({
+  value,
+  onChange,
+  placeholder = 'Select date',
+  minDate,
+  maxDate,
+  className = '',
+  error = false,
+}: DatePickerFieldProps) {
+  const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
+
+  return (
+    <div className={`relative ${className}`}>
+      <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <DatePicker
+        selected={selectedDate}
+        onChange={(date: Date | null) => onChange(date ? formatLocalDate(date) : '')}
+        dateFormat="yyyy-MM-dd"
+        placeholderText={placeholder}
+        minDate={minDate}
+        maxDate={maxDate}
+        className={`w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${
+          error ? 'border-destructive' : 'border-border'
+        }`}
+      />
+    </div>
+  );
+}
