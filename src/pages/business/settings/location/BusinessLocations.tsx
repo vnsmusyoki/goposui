@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { useBusinessLocations, type BusinessLocationRecord } from '@/hooks/business/settings/useBusinessLocations';
 import { ApiError } from '@/lib/api';
+import { useBusinessCurrency } from '@/business/businessStore';
 import SettingsTabShell from '../SettingsTabShell';
 import Select, { type StylesConfig } from 'react-select';
 
@@ -128,6 +129,7 @@ const sortOptions: SelectOption[] = [
 export default function BusinessLocations() {
   const navigate = useNavigate();
   const { locations, isLoading, error, fetchLocations, deleteLocation } = useBusinessLocations();
+  const { formatCurrency } = useBusinessCurrency();
   
   const shellCard = 'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
   const primaryButton = 'rounded-lg bg-primary text-primary-foreground hover:bg-primary/90';
@@ -225,14 +227,6 @@ export default function BusinessLocations() {
       location.country,
     ].filter(Boolean);
     return parts.join(', ');
-  };
-
-  // Format currency
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
   };
 
   // Render Grid View

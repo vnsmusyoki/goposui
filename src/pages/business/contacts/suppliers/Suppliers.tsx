@@ -2,8 +2,26 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select, { type StylesConfig } from 'react-select';
 import toast from 'react-hot-toast';
+import {
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LineChart as RechartsLineChart,
+  Line,
+  ScatterChart as RechartsScatterChart,
+  Scatter,
+  ZAxis,
+} from 'recharts';
 import { ApiError } from '@/lib/api';
 import { normalizePhoneNumber } from '@/lib/phone';
+import { useBusinessCurrency } from '@/business/businessStore';
 import PhoneNumberInput from '@/components/forms/PhoneNumberInput';
 import { useBusinessSuppliers, type BusinessSupplierRecord, type CreateBusinessSupplierInput } from '@/hooks/business/suppliers/useBusinessSuppliers';
 import {
@@ -39,7 +57,6 @@ import {
   Users,
   ShoppingBag,
   Clock,
-  Award,
   FileText,
   CreditCard,
   AlertTriangle,
@@ -55,7 +72,7 @@ import {
   FileSpreadsheet,
   Save,
 } from 'lucide-react';
-import SettingsTabShell from '../settings/SettingsTabShell';
+import SettingsTabShell from '../../settings/SettingsTabShell';
 
 // ===================== TYPES =====================
 
@@ -337,6 +354,8 @@ const sortOptions: SelectOption[] = [
   { value: 'createdAt', label: 'Sort by Created' },
 ];
 
+const chartColors = ['#2563eb', '#16a34a', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
 // ===================== MAIN COMPONENT =====================
 
 export default function Suppliers() {
@@ -354,6 +373,7 @@ export default function Suppliers() {
     removeSupplierLocally,
     clearError,
   } = useBusinessSuppliers();
+  const { formatCurrency } = useBusinessCurrency();
 
   const [activeTab, setActiveTab] = useState<'analytics' | 'list'>('analytics');
   const [searchTerm, setSearchTerm] = useState('');
@@ -362,7 +382,6 @@ export default function Suppliers() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive' | 'pending' | 'suspended'>('all');
   const [filterTier, setFilterTier] = useState<'all' | 'preferred' | 'vip' | 'standard' | 'new'>('all');
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -487,6 +506,111 @@ export default function Suppliers() {
     [sortBy],
   );
 
+  const statusChartData = useMemo(
+    () => [
+      { name: 'Active', value: stats.active },
+      { name: 'Pending', value: stats.pending },
+      { name: 'Suspended', value: stats.suspended },
+      { name: 'Inactive', value: suppliers.filter((supplier) => supplier.status === 'inactive').length },
+    ],
+    [stats.active, stats.pending, stats.suspended, suppliers],
+  );
+
+  const tierChartData = useMemo(
+    () => [
+      { name: 'Preferred', value: stats.preferred },
+      { name: 'VIP', value: stats.vip },
+      { name: 'Standard', value: suppliers.filter((supplier) => supplier.tier === 'standard').length },
+      { name: 'New', value: suppliers.filter((supplier) => supplier.tier === 'new').length },
+    ],
+    [stats.preferred, stats.vip, suppliers],
+  );
+
+  const topSpendChartData = useMemo(
+    () => suppliers
+      .slice()
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 6)
+      .map((supplier) => ({
+        name: supplier.name.length > 18 ? `${supplier.name.slice(0, 18)}...` : supplier.name,
+        fullName: supplier.name,
+        value: supplier.totalAmount,
+      })),
+    [suppliers],
+  );
+
+  const topPurchaseChartData = useMemo(
+    () => suppliers
+      .slice()
+      .sort((a, b) => b.totalPurchases - a.totalPurchases)
+      .slice(0, 6)
+      .map((supplier) => ({
+        name: supplier.name.length > 18 ? `${supplier.name.slice(0, 18)}...` : supplier.name,
+        fullName: supplier.name,
+        value: supplier.totalPurchases,
+      })),
+    [suppliers],
+  );
+
+  const leadTimeVsRatingData = useMemo(
+    () => suppliers.map((supplier) => ({
+      name: supplier.name,
+      rating: supplier.rating,
+      leadTime: supplier.leadTime,
+      spend: supplier.totalAmount,
+    })),
+    [suppliers],
+  );
+
+  const supplierGrowthData = useMemo(() => {
+    const monthBuckets = Array.from({ length: 12 }, (_, index) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (11 - index));
+      return {
+        key: `${date.getFullYear()}-${date.getMonth()}`,
+        label: date.toLocaleDateString('en-US', { month: 'short' }),
+        count: 0,
+      };
+    });
+
+    const monthMap = new Map(monthBuckets.map((bucket) => [bucket.key, bucket]));
+
+    suppliers.forEach((supplier) => {
+      const createdDate = new Date(supplier.createdAt);
+      if (Number.isNaN(createdDate.getTime())) {
+        return;
+      }
+
+      const key = `${createdDate.getFullYear()}-${createdDate.getMonth()}`;
+      const bucket = monthMap.get(key);
+      if (bucket) {
+        bucket.count += 1;
+      }
+    });
+
+    return monthBuckets;
+  }, [suppliers]);
+
+  const chartTooltipStyle = {
+    backgroundColor: 'hsl(var(--background))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: 12,
+    color: 'hsl(var(--foreground))',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12)',
+  } as const;
+
+  const renderChartCardTitle = (title: string, subtitle: string, icon: React.ReactNode) => (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          {icon}
+          {title}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+
   const validateCreateSupplierForm = () => {
     const errors: string[] = [];
 
@@ -556,13 +680,6 @@ export default function Suppliers() {
   };
 
   // Helper functions
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
   const getStatusBadge = (status: SupplierStatus) => {
     const config = {
       active: { icon: CheckCircle, className: 'bg-success/10 text-success' },
@@ -613,14 +730,13 @@ export default function Suppliers() {
 
     switch (action) {
       case 'view':
-        setSelectedSupplier(supplier);
+        navigate(`/contacts/suppliers/${supplier.id}`);
         break;
       case 'delete':
         setSupplierToDelete(supplier);
         setShowDeleteModal(true);
         break;
       default:
-        setSelectedSupplier(supplier);
         break;
     }
   };
@@ -725,114 +841,198 @@ export default function Suppliers() {
 
         {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Status Distribution */}
           <div className={`${shellCard} p-4`}>
-            <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
-              <PieChart className="w-4 h-4 text-primary" />
-              Status Distribution
-            </h3>
-            <div className="space-y-3">
-              {[
-                { label: 'Active', value: stats.active, color: 'bg-success' },
-                { label: 'Pending', value: stats.pending, color: 'bg-warning' },
-                { label: 'Suspended', value: stats.suspended, color: 'bg-destructive' },
-                { label: 'Inactive', value: suppliers.filter(s => s.status === 'inactive').length, color: 'bg-muted' },
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium text-foreground">{item.value}</span>
-                  </div>
-                  <div className="mt-1 h-2 bg-muted rounded-full">
-                    <div
-                      className={`h-2 ${item.color} rounded-full`}
-                      style={{ width: `${stats.total > 0 ? (item.value / stats.total) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Tier Distribution */}
-          <div className={`${shellCard} p-4`}>
-            <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              Supplier Tiers
-            </h3>
-            <div className="space-y-3">
-              {[
-                { label: '⭐ Preferred', value: stats.preferred, color: 'bg-purple-500' },
-                { label: '👑 VIP', value: stats.vip, color: 'bg-amber-500' },
-                { label: 'Standard', value: suppliers.filter(s => s.tier === 'standard').length, color: 'bg-blue-500' },
-                { label: '🆕 New', value: suppliers.filter(s => s.tier === 'new').length, color: 'bg-green-500' },
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="font-medium text-foreground">{item.value}</span>
-                  </div>
-                  <div className="mt-1 h-2 bg-muted rounded-full">
-                    <div
-                      className={`h-2 ${item.color} rounded-full`}
-                      style={{ width: `${stats.total > 0 ? (item.value / stats.total) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Top Suppliers */}
-          <div className={`${shellCard} p-4 lg:col-span-2`}>
-            <h3 className="mb-3 text-sm font-semibold text-foreground flex items-center gap-2">
-              <Award className="w-4 h-4 text-primary" />
-              Top Performing Suppliers
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-muted-foreground border-b border-border">
-                    <th className="pb-2 font-medium">Supplier</th>
-                    <th className="pb-2 font-medium text-center">Rating</th>
-                    <th className="pb-2 font-medium text-right">Purchases</th>
-                    <th className="pb-2 font-medium text-right">Total Value</th>
-                    <th className="pb-2 font-medium text-center">Lead Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppliers
-                    .sort((a, b) => b.rating - a.rating)
-                    .slice(0, 5)
-                    .map((supplier) => (
-                      <tr key={supplier.id} className="border-b border-border last:border-0">
-                        <td className="py-2">
-                          <div>
-                            <p className="font-medium text-foreground">{supplier.name}</p>
-                            <p className="text-xs text-muted-foreground">{supplier.companyName}</p>
-                          </div>
-                        </td>
-                        <td className="py-2 text-center">
-                          <span className="font-semibold text-warning">{supplier.rating}</span>
-                          <span className="text-muted-foreground">⭐</span>
-                        </td>
-                        <td className="py-2 text-right">{supplier.totalPurchases}</td>
-                        <td className="py-2 text-right">{formatCurrency(supplier.totalAmount)}</td>
-                        <td className="py-2 text-center">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                            supplier.leadTime <= 3
-                              ? 'bg-success/10 text-success'
-                              : supplier.leadTime <= 5
-                              ? 'bg-warning/10 text-warning'
-                              : 'bg-destructive/10 text-destructive'
-                          }`}>
-                            {supplier.leadTime} days
-                          </span>
-                        </td>
-                      </tr>
+            {renderChartCardTitle(
+              'Supplier Status Mix',
+              'See active, pending, suspended, and inactive suppliers at a glance.',
+              <PieChart className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Suppliers']} />
+                  <Pie
+                    data={statusChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={48}
+                    outerRadius={86}
+                    paddingAngle={3}
+                  >
+                    {statusChartData.map((entry, index) => (
+                      <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />
                     ))}
-                </tbody>
-              </table>
+                  </Pie>
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Supplier Tier Mix',
+              'Track preferred, VIP, standard, and new supplier concentration.',
+              <BarChart3 className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsPieChart>
+                  <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Suppliers']} />
+                  <Pie
+                    data={tierChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={48}
+                    outerRadius={86}
+                    paddingAngle={3}
+                  >
+                    {tierChartData.map((entry, index) => (
+                      <Cell key={entry.name} fill={chartColors[(index + 2) % chartColors.length]} />
+                    ))}
+                  </Pie>
+                </RechartsPieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Supplier Growth',
+              'Monthly supplier onboarding trend for the last 12 months.',
+              <TrendingUp className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsLineChart data={supplierGrowthData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'New suppliers']} />
+                  <Line
+                    type="monotone"
+                    dataKey="count"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: 'hsl(var(--primary))' }}
+                    activeDot={{ r: 6 }}
+                  />
+                </RechartsLineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Top Supplier Spend',
+              'High-value suppliers by total purchase amount.',
+              <DollarSign className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart data={topSpendChartData} layout="vertical" margin={{ left: 8, right: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value) => formatCurrency(Number(value))} />
+                  <YAxis type="category" dataKey="name" width={90} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(value: any) => [formatCurrency(Number(value ?? 0)), 'Total spend']}
+                  />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="hsl(var(--primary))" />
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Top Purchase Frequency',
+              'Suppliers driving the highest order count.',
+              <ShoppingBag className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart data={topPurchaseChartData} layout="vertical" margin={{ left: 8, right: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={90} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Orders']} />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="hsl(var(--success))" />
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Rating vs Lead Time',
+              'Spot reliable suppliers and identify slower ones that need follow-up.',
+              <Activity className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsScatterChart margin={{ top: 10, right: 12, bottom: 8, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis
+                    type="number"
+                    dataKey="rating"
+                    name="Rating"
+                    domain={[0, 5]}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `${value}★`}
+                  />
+                  <YAxis
+                    type="number"
+                    dataKey="leadTime"
+                    name="Lead time"
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value) => `${value}d`}
+                  />
+                  <ZAxis dataKey="spend" range={[40, 120]} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(value: any, name: any) => [
+                      name === 'leadTime' ? `${value ?? 0} days` : name === 'rating' ? `${value ?? 0} stars` : formatCurrency(Number(value ?? 0)),
+                      name,
+                    ]}
+                  />
+                  <Scatter name="Suppliers" data={leadTimeVsRatingData} fill="hsl(var(--warning))" />
+                </RechartsScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className={`${shellCard} p-4`}>
+            {renderChartCardTitle(
+              'Outstanding Balance Risk',
+              'Suppliers with the highest unpaid balances.',
+              <CreditCard className="w-4 h-4 text-primary" />,
+            )}
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <RechartsBarChart
+                  data={suppliers
+                    .slice()
+                    .sort((a, b) => b.outstandingBalance - a.outstandingBalance)
+                    .slice(0, 6)
+                    .map((supplier) => ({
+                      name: supplier.name.length > 18 ? `${supplier.name.slice(0, 18)}...` : supplier.name,
+                      value: supplier.outstandingBalance,
+                    }))}
+                  layout="vertical"
+                  margin={{ left: 8, right: 12 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value) => formatCurrency(Number(value))} />
+                  <YAxis type="category" dataKey="name" width={90} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    formatter={(value: any) => [formatCurrency(Number(value ?? 0)), 'Outstanding']}
+                  />
+                  <Bar dataKey="value" radius={[0, 8, 8, 0]} fill="hsl(var(--destructive))" />
+                </RechartsBarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
@@ -874,7 +1074,7 @@ export default function Suppliers() {
           <div
             key={supplier.id}
             className={`${shellCard} p-4 hover:shadow-md transition-shadow cursor-pointer group`}
-            onClick={() => setSelectedSupplier(supplier)}
+            onClick={() => navigate(`/contacts/suppliers/${supplier.id}`)}
           >
             <div className="flex items-start justify-between mb-3">
               <div className="rounded-lg bg-primary/10 p-3 transition-colors group-hover:bg-primary/15">
@@ -932,7 +1132,10 @@ export default function Suppliers() {
             <div className="mt-3 pt-3 border-t border-border flex items-center justify-end gap-1">
               <button
                 className={`p-1.5 ${mutedIconButton} hover:text-primary`}
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/contacts/suppliers/${supplier.id}`);
+                }}
               >
                 <Eye className="w-4 h-4" />
               </button>
@@ -1000,7 +1203,7 @@ export default function Suppliers() {
               <tr
                 key={supplier.id}
                 className="cursor-pointer transition-colors hover:bg-surface-alt/70"
-                onClick={() => setSelectedSupplier(supplier)}
+                onClick={() => navigate(`/contacts/suppliers/${supplier.id}`)}
               >
                 <td className="px-4 py-3">
                   <div>
@@ -1082,8 +1285,8 @@ export default function Suppliers() {
                           left: openActionMenuPosition.left,
                         }}
                       >
-                        <ActionMenuItem label="Pay" onClick={() => handleSupplierAction('pay', supplier)} />
-                        <ActionMenuItem label="View" onClick={() => handleSupplierAction('view', supplier)} />
+                <ActionMenuItem label="Pay" onClick={() => handleSupplierAction('pay', supplier)} />
+                <ActionMenuItem label="View" onClick={() => handleSupplierAction('view', supplier)} />
                         <ActionMenuItem label="Edit" onClick={() => handleSupplierAction('edit', supplier)} />
                         <ActionMenuItem label="Delete" destructive onClick={() => handleSupplierAction('delete', supplier)} />
                         <ActionMenuItem label="Deactivate" onClick={() => handleSupplierAction('deactivate', supplier)} />
@@ -1173,13 +1376,13 @@ export default function Suppliers() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 rounded-lg bg-surface-alt p-1 mb-6 w-fit">
+      <div className="flex items-center gap-6 border-b border-border mb-6 w-fit">
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-2 px-4 py-2 rounded transition-all ${
+          className={`flex items-center gap-2 px-1 py-2 border-b-2 transition-colors ${
             activeTab === 'analytics'
-              ? 'bg-background shadow text-primary'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <BarChart3 className="w-4 h-4" />
@@ -1187,10 +1390,10 @@ export default function Suppliers() {
         </button>
         <button
           onClick={() => setActiveTab('list')}
-          className={`flex items-center gap-2 px-4 py-2 rounded transition-all ${
+          className={`flex items-center gap-2 px-1 py-2 border-b-2 transition-colors ${
             activeTab === 'list'
-              ? 'bg-background shadow text-primary'
-              : 'text-muted-foreground hover:text-foreground'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
           <Truck className="w-4 h-4" />

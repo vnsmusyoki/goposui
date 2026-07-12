@@ -61,6 +61,7 @@ import {
   Eye
 } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore';
+import { useBusinessCurrency } from '@/business/businessStore';
 
 // ============================================
 // TYPES
@@ -324,14 +325,6 @@ const MOCK_CUSTOMERS: Customer[] = [
 // UTILITY FUNCTIONS
 // ============================================
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2
-  }).format(amount);
-};
-
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-US', {
@@ -369,6 +362,7 @@ const getTierIcon = (tier: string) => {
 const PosLayout = () => {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
+  const { formatCurrency } = useBusinessCurrency();
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');

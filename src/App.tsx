@@ -23,7 +23,12 @@ import CreateBusinessLocation from './pages/business/settings/location/CreateBus
 import InvoiceSettings from './pages/business/settings/invoice/InvoiceSettings'
 import CreateInvoiceSettings from './pages/business/settings/invoice/CreateInvoiceSettings'
 import EditInvoiceSettings from './pages/business/settings/invoice/EditInvoiceSettings'
-import Suppliers from './pages/business/contacts/Suppliers'
+import Suppliers from './pages/business/contacts/suppliers/Suppliers'
+import SupplierProfile from './pages/business/contacts/suppliers/SupplierProfile'
+import ProductsList from './pages/business/products/ProductsList'
+import CreateProduct from './pages/business/products/CreateProduct'
+import ProductUnits from './pages/business/units/ProductUnits'
+import CreateProductUnit from './pages/business/units/CreateProductUnit'
 
 function App() {
   return (
@@ -50,12 +55,16 @@ function App() {
           <Route path="/business" element={<Navigate to="/home" replace />} />
 
           {/* CATEGORIES  */}
-          <Route path="/inventory/categories" element={<BusinessCategoriesList />} />
-          <Route path="/inventory/categories/create" element={<CreateBusinessCategory />} />
+          <Route path="/products/categories" element={<BusinessCategoriesList />} />
+          <Route path="/products/categories/create" element={<CreateBusinessCategory />} />
 
           {/* SUB CATEGORIES */}
           <Route path="/inventory/subcategories" element={<BusinessSubCategoryList />} />
           <Route path="/inventory/subcategories/create" element={<CreateSubCategory />} />
+
+          {/* UNITS */}
+          <Route path="/products/units" element={<ProductUnits />} />
+          <Route path="/products/units/create" element={<CreateProductUnit />} />
 
           {/* SETTINGS */}
           <Route path="/business/settings" element={<BusinessSettings />} />
@@ -68,6 +77,12 @@ function App() {
 
           {/* CONTACTS */}
           <Route path="/contacts/suppliers" element={<Suppliers />} />
+          <Route path="/contacts/suppliers/:id" element={<SupplierProfile />} />
+
+
+          {/* PRODUCTS */}
+          <Route path="/products/list" element={<ProductsList />} />
+          <Route path="/products/create" element={<CreateProduct />} />
         </Route>
       </Route>
 
