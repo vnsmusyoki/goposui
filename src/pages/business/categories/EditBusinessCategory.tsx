@@ -284,7 +284,7 @@ const ToggleSwitch = ({
 
 // ===================== MAIN COMPONENT =====================
 
-export default function CreateBusinessCategory() {
+export default function EditBusinessCategory() {
   const navigate = useNavigate();
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const { createCategory, isLoading: isCategoryActionLoading } = useCategories();

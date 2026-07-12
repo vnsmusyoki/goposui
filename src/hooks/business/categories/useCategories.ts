@@ -43,6 +43,24 @@ type CreateCategoryResponse = {
   id: string;
   name: string;
   category_code: string;
+  active: boolean;
+  featured: boolean;
+  sort_order: number;
+  message: string;
+};
+
+type UpdateCategoryResponse = {
+  id: string;
+  name: string;
+  category_code: string;
+  active: boolean;
+  featured: boolean;
+  sort_order: number;
+  message: string;
+};
+
+type DeleteCategoryResponse = {
+  id: string;
   message: string;
 };
 
@@ -59,8 +77,8 @@ type CategoryStore = {
   getCategoryById: (id: string) => CategoryItem | undefined;
   getCategoryBySlug: (slug: string) => CategoryItem | undefined;
   createCategory: (data: CreateCategoryInput) => Promise<CreateCategoryResponse>;
-  updateCategory: (id: string, data: Partial<CategoryFormData>) => Promise<CategoryItem | null>;
-  deleteCategory: (id: string) => Promise<boolean>;
+  updateCategory: (id: string, data: Partial<CategoryFormData>) => Promise<UpdateCategoryResponse>;
+  deleteCategory: (id: string) => Promise<DeleteCategoryResponse>;
   clearError: () => void;
 };
 
@@ -111,30 +129,38 @@ const useCategoryStore = create<CategoryStore>((set, get) => ({
   updateCategory: async (id, data) => {
     set({ isLoading: true, error: null });
     try {
-      let updatedCategory: CategoryItem | null = null;
+      const response = await apiRequest<UpdateCategoryResponse>(`/categories/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: data.name,
+          category_code: data.categoryCode,
+          description: data.description,
+          meta_title: data.metaTitle,
+          meta_description: data.metaDescription,
+          image_url: data.imageUrl,
+          active: data.active,
+          featured: data.featured,
+          sort_order: data.sortOrder,
+        }),
+      });
 
       set((state) => ({
-        categories: state.categories.map((category) => {
-          if (category.id !== id) {
-            return category;
-          }
-
-          updatedCategory = {
-            ...category,
-            name: data.name?.trim() ?? category.name,
-            categoryCode: data.categoryCode?.trim() ?? category.categoryCode,
-            description: data.description?.trim() ?? category.description,
-            active: data.active ?? category.active,
-            featured: data.featured ?? category.featured,
-            sortOrder: data.sortOrder ?? category.sortOrder,
-            updatedAt: new Date().toISOString(),
-          };
-
-          return updatedCategory;
-        }),
+        categories: state.categories.map((category) =>
+          category.id === id
+            ? {
+                ...category,
+                name: response.name,
+                categoryCode: response.category_code,
+                active: response.active,
+                featured: response.featured,
+                sortOrder: response.sort_order,
+                updatedAt: new Date().toISOString(),
+              }
+            : category,
+        ),
       }));
 
-      return updatedCategory;
+      return response;
     } finally {
       set({ isLoading: false });
     }
@@ -143,10 +169,20 @@ const useCategoryStore = create<CategoryStore>((set, get) => ({
   deleteCategory: async (id) => {
     set({ isLoading: true, error: null });
     try {
+      const response = await apiRequest<DeleteCategoryResponse>(`/categories/${id}`, {
+        method: 'DELETE',
+      });
+
       set((state) => ({
         categories: state.categories.filter((category) => category.id !== id),
       }));
-      return true;
+
+      return response;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'Unable to delete category.',
+      });
+      throw error;
     } finally {
       set({ isLoading: false });
     }

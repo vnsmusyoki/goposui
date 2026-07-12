@@ -1,3 +1,3 @@
 export default function CreateProductUnit() {
-  return <div>Creating unit</div>;
+  return <div>Listing units</div>;
 }

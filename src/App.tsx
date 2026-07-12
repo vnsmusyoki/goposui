@@ -29,6 +29,10 @@ import ProductsList from './pages/business/products/ProductsList'
 import CreateProduct from './pages/business/products/CreateProduct'
 import ProductUnits from './pages/business/units/ProductUnits'
 import CreateProductUnit from './pages/business/units/CreateProductUnit'
+import EditBusinessCategory from './pages/business/categories/EditBusinessCategory'
+import EditSubCategory from './pages/business/subcategories/EditSubCategory'
+import BrandsList from './pages/business/brands/BrandsList'
+import WarrantiesList from './pages/business/warranties/WarrantiesList'
 
 function App() {
   return (
@@ -57,14 +61,22 @@ function App() {
           {/* CATEGORIES  */}
           <Route path="/products/categories" element={<BusinessCategoriesList />} />
           <Route path="/products/categories/create" element={<CreateBusinessCategory />} />
+          <Route path="/products/categories/:id/edit" element={<EditBusinessCategory />} />
 
           {/* SUB CATEGORIES */}
-          <Route path="/inventory/subcategories" element={<BusinessSubCategoryList />} />
-          <Route path="/inventory/subcategories/create" element={<CreateSubCategory />} />
+          <Route path="/products/sub-categories" element={<BusinessSubCategoryList />} />
+          <Route path="/inventory/sub-categories/create" element={<CreateSubCategory />} />
+          <Route path="/inventory/sub-categories/:id/edit" element={<EditSubCategory />} />
 
           {/* UNITS */}
-          <Route path="/products/units" element={<ProductUnits />} />
-          <Route path="/products/units/create" element={<CreateProductUnit />} />
+          <Route path="/products/units" element={<ProductUnits />} /> 
+
+          {/* BRANDS */}
+          <Route path="/products/brands" element={<BrandsList />} />
+
+
+          {/* WARRANTIES */}
+          <Route path="/products/warranties" element={<WarrantiesList />} />
 
           {/* SETTINGS */}
           <Route path="/business/settings" element={<BusinessSettings />} />

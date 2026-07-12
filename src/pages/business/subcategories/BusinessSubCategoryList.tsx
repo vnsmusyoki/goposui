@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   Search,
   Plus,
@@ -48,6 +49,8 @@ import {
   X,
   Check,
 } from 'lucide-react';
+import { useCategories } from '@/hooks/business/categories/useCategories';
+import { useSubCategories } from '@/hooks/business/subcategories/useSubCategories';
 
 // ===================== TYPES =====================
 
@@ -86,7 +89,7 @@ type ParentCategory = {
 
 // ===================== MOCK DATA =====================
 
-const mockSubCategories: SubCategoryItem[] = [
+const mockSubCategories = [
   {
     id: 'sub_001',
     name: 'Maize Flour',
@@ -289,7 +292,7 @@ const mockSubCategories: SubCategoryItem[] = [
       inactive: 3,
     },
   },
-];
+ ] as unknown as SubCategoryItem[];
 
 const mockParentCategories: ParentCategory[] = [
   { id: 'cat_001', name: 'Cereals & Grains', subCategoryCount: 3 },
@@ -367,6 +370,8 @@ const CategoryIcon = ({ iconName, className = "w-5 h-5" }: { iconName: string; c
 
 export default function BusinessSubCategoryList() {
   const navigate = useNavigate();
+  const { categories, fetchCategories } = useCategories();
+  const { subCategories, isLoading, error, fetchSubCategories, deleteSubCategory } = useSubCategories();
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'tree' | 'grid' | 'list'>('list');
   const [sortBy, setSortBy] = useState<'name' | 'productCount' | 'createdAt' | 'sortOrder' | 'parentCategory'>('name');
@@ -376,14 +381,33 @@ export default function BusinessSubCategoryList() {
   const [selectedSubCategory, setSelectedSubCategory] = useState<SubCategoryItem | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [subCategoryToDelete, setSubCategoryToDelete] = useState<SubCategoryItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [subCategories, setSubCategories] = useState(mockSubCategories);
-  const [parentCategories] = useState(mockParentCategories);
   
   // UI constants
   const shellCard = 'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
   const primaryButton = 'rounded-lg bg-primary text-primary-foreground hover:bg-primary/90';
   const mutedIconButton = 'rounded hover:bg-surface-alt transition-colors text-muted-foreground';
+
+  const parentCategories = useMemo(() => {
+    const counts = subCategories.reduce((acc, sub) => {
+      acc[sub.parentCategoryId] = (acc[sub.parentCategoryId] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    return categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      subCategoryCount: counts[category.id] ?? 0,
+    }));
+  }, [categories, subCategories]);
+
+  React.useEffect(() => {
+    void fetchCategories();
+    void fetchSubCategories();
+  }, [fetchCategories, fetchSubCategories]);
+
+  const handleRefresh = async () => {
+    await Promise.all([fetchCategories(), fetchSubCategories()]);
+  };
 
   // Filter and sort sub-categories
   const filteredSubCategories = useMemo(() => {
@@ -507,7 +531,10 @@ export default function BusinessSubCategoryList() {
                     <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+                    <button
+                      className={`p-1.5 ${mutedIconButton} hover:text-primary`}
+                      onClick={() => navigate(`/inventory/sub-categories/${sub.id}/edit`)}
+                    >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button 
@@ -649,7 +676,10 @@ export default function BusinessSubCategoryList() {
                     <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+                    <button
+                      className={`p-1.5 ${mutedIconButton} hover:text-primary`}
+                      onClick={() => navigate(`/inventory/sub-categories/${sub.id}/edit`)}
+                    >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button 
@@ -677,10 +707,10 @@ export default function BusinessSubCategoryList() {
       <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/inventory/categories')}
-              className="rounded-lg p-2 transition-colors hover:bg-surface-alt"
-            >
+          <button
+            onClick={() => navigate('/products/categories')}
+            className="rounded-lg p-2 transition-colors hover:bg-surface-alt"
+          >
               <ArrowLeft className="w-5 h-5 text-foreground" />
             </button>
             <div>
@@ -696,7 +726,7 @@ export default function BusinessSubCategoryList() {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate('/inventory/subcategories/create')}
+            onClick={() => navigate('/inventory/sub-categories/create')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}
           >
             <Plus className="w-4 h-4" />
@@ -705,7 +735,7 @@ export default function BusinessSubCategoryList() {
           <button className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
             <DownloadIcon className="w-5 h-5 text-primary" />
           </button>
-          <button className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
+          <button onClick={handleRefresh} className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
             <RefreshCw className="w-5 h-5 text-primary" />
           </button>
         </div>
@@ -896,11 +926,19 @@ export default function BusinessSubCategoryList() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  // Handle delete
-                  setSubCategories((prev) => prev.filter((s) => s.id !== subCategoryToDelete.id));
-                  setShowDeleteModal(false);
-                  setSubCategoryToDelete(null);
+                onClick={async () => {
+                  try {
+                    const response = await deleteSubCategory(subCategoryToDelete.id);
+                    toast.success(response.message || 'Sub-category deleted successfully.', {
+                      position: 'top-right',
+                    });
+                    setShowDeleteModal(false);
+                    setSubCategoryToDelete(null);
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : 'Unable to delete sub-category.', {
+                      position: 'top-right',
+                    });
+                  }
                 }}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
@@ -1025,7 +1063,10 @@ export default function BusinessSubCategoryList() {
 
               {/* Actions */}
               <div className="border-t border-border pt-4 flex flex-col gap-2">
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+                <button
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  onClick={() => navigate(`/inventory/sub-categories/${selectedSubCategory.id}/edit`)}
+                >
                   <Edit className="w-4 h-4" />
                   Edit Sub-Category
                 </button>
@@ -1033,7 +1074,13 @@ export default function BusinessSubCategoryList() {
                   <Eye className="w-4 h-4" />
                   View Products
                 </button>
-                <button className="w-full flex items-center justify-center gap-2 px-4 py-2 text-destructive bg-destructive/10 rounded-lg hover:bg-destructive/20 transition-colors">
+                <button
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 text-destructive bg-destructive/10 rounded-lg hover:bg-destructive/20 transition-colors"
+                  onClick={() => {
+                    setSubCategoryToDelete(selectedSubCategory);
+                    setShowDeleteModal(true);
+                  }}
+                >
                   <Trash2 className="w-4 h-4" />
                   Delete Sub-Category
                 </button>

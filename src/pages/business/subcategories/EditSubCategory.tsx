@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import Select, { type StylesConfig } from 'react-select';
 import toast from 'react-hot-toast';
 import {
@@ -372,11 +372,12 @@ const categoryOptionLabel = (option: SelectOption) => (
   </div>
 );
 
-export default function CreateSubCategory() {
+export default function EditSubCategory() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const { categories, fetchCategories } = useCategories();
-  const { createSubCategory } = useSubCategories();
+  const { subCategories, fetchSubCategories, updateSubCategory } = useSubCategories();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormError[]>([]);
   const [formData, setFormData] = useState<SubCategoryFormData>({
@@ -397,7 +398,30 @@ export default function CreateSubCategory() {
 
   useEffect(() => {
     void fetchCategories();
-  }, [fetchCategories]);
+    void fetchSubCategories();
+  }, [fetchCategories, fetchSubCategories]);
+
+  useEffect(() => {
+    if (!id) return;
+    const existing = subCategories.find((item) => item.id === id);
+    if (!existing) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      name: existing.name,
+      categoryCode: existing.subCategoryCode,
+      description: existing.description,
+      parentCategoryId: existing.parentCategoryId,
+      active: existing.active,
+      featured: existing.featured,
+      sortOrder: existing.sortOrder,
+      metaTitle: existing.metadata?.metaTitle ?? '',
+      metaDescription: existing.metadata?.metaDescription ?? '',
+      imageUrl: '',
+      imageName: '',
+      imageSize: 0,
+    }));
+  }, [id, subCategories]);
 
   const parentOptions = useMemo<SelectOption[]>(() => {
     return categories.map((category) => ({
@@ -453,7 +477,12 @@ export default function CreateSubCategory() {
 
     setIsSubmitting(true);
     try {
-      const response = await createSubCategory({
+      if (!id) {
+        toast.error('Sub-category id is missing.');
+        return;
+      }
+
+      const response = await updateSubCategory(id, {
         name: formData.name.trim(),
         subCategoryCode: formData.categoryCode.trim(),
         description: formData.description.trim(),
@@ -465,7 +494,7 @@ export default function CreateSubCategory() {
         metaDescription: formData.metaDescription.trim(),
         imageUrl: formData.imageUrl,
       });
-      toast.success(response.message || 'Sub-category created successfully.');
+      toast.success(response.message || 'Sub-category updated successfully.');
       navigate('/products/sub-categories');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to save sub-category.');

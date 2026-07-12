@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import Select, { type StylesConfig } from 'react-select';
 import {
   Search, 
@@ -7,8 +8,6 @@ import {
   Edit,
   Trash2, 
   ChevronDown, 
-  Grid,
-  List,
   FolderTree,
   Package,
   Tag,
@@ -34,6 +33,7 @@ import {
   Home,
   Sparkles, 
 } from 'lucide-react';
+import { API_BASE_URL, ApiError } from '@/lib/api';
 import { type CategoryItem, useCategories } from '@/hooks/business/categories/useCategories';
 
 type StatusBadgeProps = {
@@ -200,7 +200,6 @@ const CategoryIcon = ({ iconName, className = "w-5 h-5" }: CategoryIconProps) =>
 export default function BusinessCategoriesList() {
   const { categories, isLoading, error, fetchCategories, deleteCategory } = useCategories();
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewMode, setViewMode] = useState<'tree' | 'grid' | 'list'>('tree');
   const [sortBy, setSortBy] = useState<'name' | 'productCount' | 'createdAt' | 'sortOrder'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
@@ -219,6 +218,45 @@ export default function BusinessCategoriesList() {
 
   const handleRefresh = async () => {
     await fetchCategories();
+  };
+
+  const handleExportCategories = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/categories/export`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+      });
+
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const payload = await response.json();
+          throw new ApiError(
+            typeof payload?.message === 'string' ? payload.message : 'Unable to export categories.',
+            response.status,
+            payload,
+          );
+        }
+        throw new Error('Unable to export categories.');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `categories_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success('Categories exported successfully.', { position: 'top-right' });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to export categories.', {
+        position: 'top-right',
+      });
+    }
   };
 
   const selectedStatusOption = useMemo(
@@ -362,10 +400,13 @@ export default function BusinessCategoriesList() {
 
           {/* Actions */}
           <div className="flex items-center gap-1 ml-2" onClick={(e) => e.stopPropagation()}>
-            <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+          <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
               <Eye className="w-4 h-4" />
             </button>
-            <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+            <button
+              className={`p-1.5 ${mutedIconButton} hover:text-primary`}
+              onClick={() => navigate(`/products/categories/${category.id}/edit`)}
+            >
               <Edit className="w-4 h-4" />
             </button>
             <button className={`p-1.5 ${mutedIconButton} hover:text-destructive`}>
@@ -395,146 +436,93 @@ export default function BusinessCategoriesList() {
     );
   };
 
-  // Render grid view
-  const renderGridView = () => {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {filteredCategories.map(category => (
-          <div
-            key={category.id}
-            className={`${shellCard} p-4 hover:shadow-md transition-shadow cursor-pointer group`}
-            onClick={() => setSelectedCategory(category)}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="rounded-lg bg-primary/10 p-3 transition-colors group-hover:bg-primary/15">
-                <CategoryIcon iconName={category.icon} className="w-6 h-6 text-primary" />
-              </div>
-              <button className="rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-surface-alt">
-                <MoreVertical className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </div>
-            
-            <h3 className="mb-1 truncate font-medium text-foreground">
-              {category.name}
-            </h3>
-            <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
-              {category.description}
-            </p>
-            
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Package className="w-3 h-3" />
-                <span>{category.productCount} products</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <StatusBadge active={category.active} />
-                {category.featured && <Star className="w-3 h-3 fill-current text-warning" />}
-              </div>
-            </div>
-
-            {category.subCategories && category.subCategories.length > 0 && (
-              <div className="mt-2 border-t border-border pt-2">
-                <div className="flex flex-wrap gap-1">
-                  <FolderTree className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">
-                    {category.subCategories.length} sub-categories
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // Render list view
   const renderListView = () => {
     return (
       <div className={`${shellCard} overflow-hidden`}>
-        <table className="min-w-full divide-y divide-border">
-          <thead className="bg-surface-alt/60">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Category
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Products
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Featured
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Created
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filteredCategories.map(category => (
-              <tr 
-                key={category.id} 
-                className="cursor-pointer transition-colors hover:bg-surface-alt/70"
-                onClick={() => setSelectedCategory(category)}
-              >
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded bg-surface-alt p-2">
-                      <CategoryIcon iconName={category.icon} className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{category.name}</p>
-                      <p className="max-w-xs truncate text-xs text-muted-foreground">{category.description}</p>
-                      {category.subCategories && category.subCategories.length > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          {category.subCategories.length} sub-categories
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-foreground">
-                  {category.productCount}
-                </td>
-                <td className="px-4 py-3">
-                  <StatusBadge active={category.active} />
-                </td>
-                <td className="px-4 py-3">
-                  {category.featured && (
-                    <Star className="w-4 h-4 fill-current text-warning" />
-                  )}
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  {new Date(category.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button 
-                      className={`p-1.5 ${mutedIconButton} hover:text-destructive`}
-                      onClick={() => {
-                        setCategoryToDelete(category);
-                        setShowDeleteModal(true);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-surface-alt/60">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Category
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Products
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Status
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Featured
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Created
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredCategories.map((category) => (
+                <tr
+                  key={category.id}
+                  className="cursor-pointer transition-colors hover:bg-surface-alt/70"
+                  onClick={() => setSelectedCategory(category)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded bg-surface-alt p-2">
+                        <CategoryIcon iconName={category.icon} className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-foreground">{category.name}</p>
+                        <p className="max-w-xs truncate text-xs text-muted-foreground">{category.description}</p>
+                        {category.subCategories && category.subCategories.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {category.subCategories.length} sub-categories
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-foreground">{category.productCount}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge active={category.active} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {category.featured && <Star className="w-4 h-4 fill-current text-warning" />}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {new Date(category.createdAt).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button className={`p-1.5 ${mutedIconButton} hover:text-primary`}>
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button
+                        className={`p-1.5 ${mutedIconButton} hover:text-primary`}
+                        onClick={() => navigate(`/products/categories/${category.id}/edit`)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        className={`p-1.5 ${mutedIconButton} hover:text-destructive`}
+                        onClick={() => {
+                          setCategoryToDelete(category);
+                          setShowDeleteModal(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   };
@@ -553,21 +541,17 @@ export default function BusinessCategoriesList() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/inventory/subcategories')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}
-          >
-            <Plus className="w-4 h-4" />
-            New Sub  Category
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate('/inventory/categories/create')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm ${primaryButton}`}
+            onClick={() => navigate('/products/categories/create')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors shadow-sm ${primaryButton}`}
           >
             <Plus className="w-4 h-4" />
             New Category
           </button>
-          <button className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}>
+          <button
+            type="button"
+            onClick={handleExportCategories}
+            className={`${shellCard} p-2 transition-colors hover:bg-surface-alt`}
+          >
             <DownloadIcon className="w-5 h-5 text-primary" />
           </button>
           <button
@@ -641,33 +625,6 @@ export default function BusinessCategoriesList() {
             </button>
           </div>
 
-          {/* View Toggle */}
-          <div className="flex items-center gap-1 rounded-lg bg-surface-alt p-1">
-            <button
-              onClick={() => setViewMode('tree')}
-              className={`p-1.5 rounded transition-colors ${
-                viewMode === 'tree' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <FolderTree className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded transition-colors ${
-                viewMode === 'grid' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded transition-colors ${
-                viewMode === 'list' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <List className="w-4 h-4" />
-            </button>
-          </div>
         </div>
       </div>
 
@@ -678,7 +635,7 @@ export default function BusinessCategoriesList() {
       )}
 
       {/* ===== CATEGORIES LIST ===== */}
-      <div className={`${shellCard} overflow-hidden`}>
+      <div>
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <RefreshCw className="w-8 h-8 animate-spin text-primary" />
@@ -690,15 +647,7 @@ export default function BusinessCategoriesList() {
             <p className="text-sm">Try adjusting your search or filters</p>
           </div>
         ) : (
-          <div>
-            {viewMode === 'tree' && (
-              <div className="divide-y divide-border">
-                {filteredCategories.map(category => renderCategoryTree(category, 0))}
-              </div>
-            )}
-            {viewMode === 'grid' && renderGridView()}
-            {viewMode === 'list' && renderListView()}
-          </div>
+          renderListView()
         )}
       </div>
 
@@ -729,8 +678,8 @@ export default function BusinessCategoriesList() {
                 <p className="flex items-start gap-2 text-xs text-warning">
                   <AlertCircle className="w-4 h-4 mt-0.5" />
                   <span>
-                    This category has {categoryToDelete.subCategories.length} sub-categories that will also be affected.
-                    Consider moving or reassigning them first.
+                    This category already has {categoryToDelete.subCategories.length} sub-categories linked to it.
+                    Remove or reassign them first if you want deletion to succeed.
                   </span>
                 </p>
               </div>
@@ -747,10 +696,17 @@ export default function BusinessCategoriesList() {
               </button>
               <button
                 onClick={async () => {
-                  // Handle delete
-                  await deleteCategory(categoryToDelete.id);
-                  setShowDeleteModal(false);
-                  setCategoryToDelete(null);
+                  try {
+                    const response = await deleteCategory(categoryToDelete.id);
+                    toast.success(response.message || 'Category deleted successfully.', { position: 'top-right' });
+                    setShowDeleteModal(false);
+                    setCategoryToDelete(null);
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error ? error.message : 'Unable to delete category.',
+                      { position: 'top-right' },
+                    );
+                  }
                 }}
                 className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
