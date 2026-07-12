@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import Select, { type StylesConfig } from 'react-select';
 import DatePickerField from '@/components/forms/DatePickerField';
 import { useBusinessLocations, type BusinessLocationRecord } from '@/hooks/business/settings/useBusinessLocations';
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
@@ -23,16 +24,39 @@ import {
   Plus,
   X,
   Trash2,
+  Edit,
+  Eye,
+  Calendar,
+  Tag,
+  FileText,
+  AlertCircle,
 } from 'lucide-react';
 
-type BatchDraft = {
+type SelectOption = {
+  value: string;
+  label: string;
+};
+
+// --------------------------------------------------------------------------
+// Types
+// --------------------------------------------------------------------------
+
+type Batch = {
   id: string;
-  remainingQuantity: string;
-  unitCost: string;
+  locationId: string;
+  quantity: number;
+  unitCost: number;
+  sellingPrice: number;
   expiryDate: string;
   lotNumber: string;
   notes: string;
 };
+
+type BatchFormData = Omit<Batch, 'id'>;
+
+// --------------------------------------------------------------------------
+// Helpers
+// --------------------------------------------------------------------------
 
 function formatMoney(amount: number, currencyCode: string, precision: number, placement: 'before' | 'after') {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
@@ -68,16 +92,53 @@ function getProductImageSrc(product: ProductDetailsType | null) {
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(product.name || 'Product')}`;
 }
 
-function createBatch(): BatchDraft {
+function createEmptyBatch(): BatchFormData {
   return {
-    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    remainingQuantity: '',
-    unitCost: '',
+    locationId: '',
+    quantity: 0,
+    unitCost: 0,
+    sellingPrice: 0,
     expiryDate: '',
     lotNumber: '',
     notes: '',
   };
 }
+
+function generateId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+const selectStyles: StylesConfig<SelectOption, false> = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: '42px',
+    borderRadius: '0.125rem',
+    borderColor: state.isFocused ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+    backgroundColor: 'hsl(var(--background))',
+    boxShadow: state.isFocused ? '0 0 0 1px hsl(var(--primary))' : 'none',
+    '&:hover': { borderColor: 'hsl(var(--primary))' },
+  }),
+  valueContainer: (base) => ({ ...base, padding: '0 0.75rem' }),
+  placeholder: (base) => ({ ...base, color: 'hsl(var(--muted-foreground))' }),
+  singleValue: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+  input: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isSelected
+      ? 'hsl(var(--primary))'
+      : state.isFocused
+        ? 'hsl(var(--muted))'
+        : 'hsl(var(--background))',
+    color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
+  }),
+  menu: (base) => ({ ...base, zIndex: 60, backgroundColor: 'hsl(var(--background))' }),
+  menuPortal: (base) => ({ ...base, zIndex: 60 }),
+  indicatorSeparator: (base) => ({ ...base, backgroundColor: 'hsl(var(--border))' }),
+};
+
+// --------------------------------------------------------------------------
+// Sub-components
+// --------------------------------------------------------------------------
 
 function StatCard({
   label,
@@ -124,151 +185,9 @@ function SectionCard({
   );
 }
 
-function BatchCard({
-  batch,
-  index,
-  canRemove,
-  showExpiry,
-  showLotNumber,
-  onChange,
-  onRemove,
-}: {
-  batch: BatchDraft;
-  index: number;
-  canRemove: boolean;
-  showExpiry: boolean;
-  showLotNumber: boolean;
-  onChange: (id: string, field: keyof Omit<BatchDraft, 'id'>, value: string) => void;
-  onRemove: (id: string) => void;
-}) {
-  return (
-    <div className="rounded-sm border border-border bg-background p-4 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Batch</p>
-          <h3 className="text-sm font-semibold text-foreground">Batch {index + 1}</h3>
-        </div>
-        {canRemove ? (
-          <button
-            type="button"
-            onClick={() => onRemove(batch.id)}
-            className="inline-flex items-center gap-2 rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted/40"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Remove
-          </button>
-        ) : null}
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <label className="space-y-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Remaining Quantity</span>
-          <input
-            type="number"
-            min={0}
-            step={1}
-            value={batch.remainingQuantity}
-            onChange={(event) => onChange(batch.id, 'remainingQuantity', event.target.value)}
-            className="w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            placeholder="0"
-          />
-        </label>
-
-        <label className="space-y-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Unit Cost (before Tax)</span>
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={batch.unitCost}
-            onChange={(event) => onChange(batch.id, 'unitCost', event.target.value)}
-            className="w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            placeholder="0.00"
-          />
-        </label>
-
-        {showExpiry ? (
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expiry Date</span>
-            <DatePickerField
-              value={batch.expiryDate}
-              onChange={(value) => onChange(batch.id, 'expiryDate', value)}
-              placeholder="Select expiry date"
-            />
-          </label>
-        ) : null}
-
-        {showLotNumber ? (
-          <label className="space-y-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lot Number</span>
-            <input
-              type="text"
-              value={batch.lotNumber}
-              onChange={(event) => onChange(batch.id, 'lotNumber', event.target.value)}
-              className="w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-              placeholder="Lot number"
-            />
-          </label>
-        ) : null}
-
-        <label className={`${showExpiry || showLotNumber ? 'md:col-span-2' : 'md:col-span-2'} space-y-1.5`}>
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Notes</span>
-          <textarea
-            value={batch.notes}
-            onChange={(event) => onChange(batch.id, 'notes', event.target.value)}
-            className="min-h-[96px] w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-            placeholder="Optional notes for this batch"
-          />
-        </label>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/40 px-2.5 py-1">
-          <Clock3 className="h-3.5 w-3.5" />
-          Batch pricing and quantity can be reviewed before saving
-        </span>
-        {showExpiry ? (
-          <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-700">
-            <CalendarDays className="h-3.5 w-3.5" />
-            Expiry tracking enabled
-          </span>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function LocationCard({
-  location,
-  selected,
-  onSelect,
-}: {
-  location: BusinessLocationRecord;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(location.id)}
-      className={`flex w-full items-start gap-3 rounded-sm border p-4 text-left transition-colors ${
-        selected ? 'border-primary bg-primary/5' : 'border-border bg-background hover:bg-muted/30'
-      }`}
-    >
-      <span
-        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          selected ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background'
-        }`}
-      >
-        {selected ? <Check className="h-3 w-3" /> : null}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">{location.locationName}</p>
-        <p className="truncate text-xs text-muted-foreground">{location.city || location.exactAddress || 'Location details'}</p>
-      </div>
-    </button>
-  );
-}
+// --------------------------------------------------------------------------
+// Main Component
+// --------------------------------------------------------------------------
 
 export default function ProductOpeningStock() {
   const { id: productId } = useParams<{ id: string }>();
@@ -282,15 +201,23 @@ export default function ProductOpeningStock() {
   const [product, setProduct] = useState<ProductDetailsType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
-  const [batches, setBatches] = useState<BatchDraft[]>([createBatch()]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<BatchFormData>(createEmptyBatch());
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const currencyCode = businessSettings?.currency || 'USD';
   const currencyPrecision = typeof businessSettings?.currencyPrecision === 'number' ? businessSettings.currencyPrecision : 2;
   const currencyPlacement = businessSettings?.currencySymbolPlacement === 'after' ? 'after' : 'before';
   const skuPrefix = businessSettings?.skuPrefix || '';
-  const showExpiry = Boolean(productSettings?.enableProductExpiry);
-  const showLotNumber = Boolean(purchasesSettings?.enableLotNumber);
+  
+  // Business settings flags
+  const enableExpiry = Boolean(productSettings?.enableProductExpiry);
+  const enableLotNumber = Boolean(purchasesSettings?.enableLotNumber);
+  
+  // Determine if we can have multiple batches
+  const canHaveMultipleBatches = enableExpiry;
 
   useEffect(() => {
     if (!productId) return;
@@ -300,6 +227,22 @@ export default function ProductOpeningStock() {
       try {
         const productData = await getProduct(productId);
         setProduct(productData);
+        
+        // If no expiry, initialize with one batch if none exist
+        if (!enableExpiry && productData) {
+          // Check if we need to load existing opening stock
+          // For now, initialize with empty batch
+          setBatches([{
+                id: generateId(),
+            locationId: '',
+            quantity: 0,
+            unitCost: 0,
+            sellingPrice: productData.defaultSellingPrice || 0,
+            expiryDate: '',
+            lotNumber: '',
+            notes: '',
+          }]);
+        }
       } catch (err) {
         if (err instanceof ApiError) {
           toast.error(err.message || 'Failed to load opening stock details');
@@ -312,42 +255,218 @@ export default function ProductOpeningStock() {
     };
 
     fetchData();
-  }, [productId, getProduct]);
-
-  useEffect(() => {
-    if (selectedLocationId || locations.length === 0) return;
-
-    const nextLocationId = product?.locationIds?.[0] || locations[0]?.id || '';
-    if (nextLocationId) {
-      setSelectedLocationId(nextLocationId);
-    }
-  }, [locations, product, selectedLocationId]);
+  }, [productId, getProduct, enableExpiry]);
 
   const formattedSku = product?.sku ? formatProductSkuDisplay(product.sku, skuPrefix) : 'N/A';
   const heroImageSrc = useMemo(() => getProductImageSrc(product), [product]);
+  const locationOptions = useMemo(
+    () => locations.map((location) => ({ value: location.id, label: location.locationName })),
+    [locations],
+  );
+  const locationNameById = useMemo(
+    () => new Map(locations.map((location) => [location.id, location.locationName])),
+    [locations],
+  );
+
+  useEffect(() => {
+    if (!formData.locationId && locations.length > 0) {
+      setFormData((current) => ({
+        ...current,
+        locationId: product?.locationIds?.[0] || locations[0].id,
+      }));
+    }
+  }, [formData.locationId, locations, product]);
 
   const totalQuantity = useMemo(
-    () => batches.reduce((sum, batch) => sum + (Number(batch.remainingQuantity) || 0), 0),
+    () => batches.reduce((sum, batch) => sum + (batch.quantity || 0), 0),
     [batches],
   );
 
   const totalValue = useMemo(
-    () => batches.reduce((sum, batch) => sum + (Number(batch.remainingQuantity) || 0) * (Number(batch.unitCost) || 0), 0),
+    () => batches.reduce((sum, batch) => sum + (batch.quantity || 0) * (batch.unitCost || 0), 0),
     [batches],
   );
 
-  const selectedLocation = locations.find((location) => location.id === selectedLocationId);
-
-  const updateBatch = (id: string, field: keyof Omit<BatchDraft, 'id'>, value: string) => {
-    setBatches((current) => current.map((batch) => (batch.id === id ? { ...batch, [field]: value } : batch)));
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      locationId: product?.locationIds?.[0] || locations[0]?.id || '',
+      quantity: 0,
+      unitCost: 0,
+      sellingPrice: product?.defaultSellingPrice || 0,
+      expiryDate: '',
+      lotNumber: '',
+      notes: '',
+    });
+    setFormErrors({});
+    setEditingBatchId(null);
   };
 
-  const removeBatch = (id: string) => {
-    setBatches((current) => (current.length > 1 ? current.filter((batch) => batch.id !== id) : current));
+  // Open modal for adding batch
+  const handleOpenAddModal = () => {
+    resetForm();
+    setFormData((current) => ({
+      ...current,
+      locationId: current.locationId || locationOptions[0]?.value || '',
+    }));
+    setIsModalOpen(true);
   };
 
-  const addBatch = () => {
-    setBatches((current) => [...current, createBatch()]);
+  // Open modal for editing batch
+  const handleOpenEditModal = (batch: Batch) => {
+    setFormData({
+      locationId: batch.locationId,
+      quantity: batch.quantity,
+      unitCost: batch.unitCost,
+      sellingPrice: batch.sellingPrice,
+      expiryDate: batch.expiryDate,
+      lotNumber: batch.lotNumber,
+      notes: batch.notes,
+    });
+    setEditingBatchId(batch.id);
+    setIsModalOpen(true);
+  };
+
+  // Validate form
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (!formData.quantity || formData.quantity <= 0) {
+      errors.quantity = 'Quantity must be greater than 0';
+    }
+
+    if (!formData.unitCost || formData.unitCost < 0) {
+      errors.unitCost = 'Unit cost must be 0 or greater';
+    }
+
+    if (!formData.locationId) {
+      errors.locationId = 'Please select a stock location';
+    }
+
+    if (enableExpiry && !formData.expiryDate) {
+      errors.expiryDate = 'Expiry date is required';
+    }
+
+    if (enableLotNumber && !formData.lotNumber.trim()) {
+      errors.lotNumber = 'Lot number is required';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // Save batch (add or update)
+  const handleSaveBatch = () => {
+    if (!validateForm()) return;
+
+    const batchData: Batch = {
+      id: editingBatchId || generateId(),
+      locationId: formData.locationId,
+      quantity: formData.quantity,
+      unitCost: formData.unitCost,
+      sellingPrice: formData.sellingPrice || product?.defaultSellingPrice || 0,
+      expiryDate: formData.expiryDate,
+      lotNumber: formData.lotNumber,
+      notes: formData.notes,
+    };
+
+    if (editingBatchId) {
+      // Update existing batch
+      setBatches((prev) => prev.map((b) => (b.id === editingBatchId ? batchData : b)));
+      toast.success('Batch updated successfully');
+    } else {
+      // Add new batch
+      setBatches((prev) => [...prev, batchData]);
+      toast.success('Batch added successfully');
+    }
+
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  // Remove batch
+  const handleRemoveBatch = (id: string) => {
+    if (batches.length <= 1 && !enableExpiry) {
+      toast.error('You must have at least one batch for this product');
+      return;
+    }
+    setBatches((prev) => prev.filter((b) => b.id !== id));
+    toast.success('Batch removed successfully');
+  };
+
+  // Render table headers based on enabled features
+  const renderTableHeaders = () => {
+    const headers = ['#', 'Location', 'Quantity', 'Unit Cost', 'Selling Price'];
+    if (enableLotNumber) headers.push('Lot Number');
+    if (enableExpiry) headers.push('Expiry Date');
+    headers.push('Notes', 'Actions');
+    return headers;
+  };
+
+  // Render table row data
+  const renderTableRow = (batch: Batch, index: number) => {
+    const cells = [
+      <td key="index" className="px-4 py-3 text-sm text-muted-foreground">
+        {index + 1}
+      </td>,
+      <td key="location" className="px-4 py-3 text-sm text-foreground">
+        {locationNameById.get(batch.locationId) || 'Not selected'}
+      </td>,
+      <td key="quantity" className="px-4 py-3 text-sm font-medium text-foreground">
+        {batch.quantity.toLocaleString()}
+      </td>,
+      <td key="unitCost" className="px-4 py-3 text-sm text-foreground">
+        {formatMoney(batch.unitCost, currencyCode, currencyPrecision, currencyPlacement)}
+      </td>,
+      <td key="sellingPrice" className="px-4 py-3 text-sm text-foreground">
+        {formatMoney(batch.sellingPrice, currencyCode, currencyPrecision, currencyPlacement)}
+      </td>,
+    ];
+
+    if (enableLotNumber) {
+      cells.push(
+        <td key="lotNumber" className="px-4 py-3 text-sm font-mono text-muted-foreground">
+          {batch.lotNumber || '—'}
+        </td>
+      );
+    }
+
+    if (enableExpiry) {
+      cells.push(
+        <td key="expiryDate" className="px-4 py-3 text-sm text-muted-foreground">
+          {batch.expiryDate || '—'}
+        </td>
+      );
+    }
+
+    cells.push(
+      <td key="notes" className="px-4 py-3 text-sm text-muted-foreground max-w-[150px] truncate">
+        {batch.notes || '—'}
+      </td>,
+      <td key="actions" className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleOpenEditModal(batch)}
+            className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            aria-label="Edit batch"
+          >
+            <Edit className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => handleRemoveBatch(batch.id)}
+            className="rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Remove batch"
+            disabled={!canHaveMultipleBatches && batches.length <= 1}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </td>,
+    );
+
+    return cells;
   };
 
   if (isLoading) {
@@ -383,7 +502,8 @@ export default function ProductOpeningStock() {
 
   return (
     <div className="space-y-6 pb-10">
-      <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-sm sm:px-6">
+      {/* Header - Keep as is */}
+      <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <button
@@ -410,7 +530,8 @@ export default function ProductOpeningStock() {
         </div>
       </div>
 
-      <div className="px-4 sm:px-6">
+      {/* Product Summary Card - Keep as is */}
+      <div className="">
         <div className="overflow-hidden rounded-sm border border-border bg-card">
           <div className="grid gap-0 lg:grid-cols-[220px_minmax(0,1fr)]">
             <div className="flex flex-col items-center justify-center gap-3 border-b border-border bg-muted/20 p-6 lg:border-b-0 lg:border-r">
@@ -463,13 +584,13 @@ export default function ProductOpeningStock() {
                 <StatCard
                   icon={Layers}
                   label="Expiry Dates"
-                  value={showExpiry ? 'Enabled' : 'Disabled'}
+                  value={enableExpiry ? 'Enabled' : 'Disabled'}
                   hint="Controlled from product settings"
                 />
                 <StatCard
-                  icon={MapPin}
+                  icon={Hash}
                   label="Lot Numbers"
-                  value={showLotNumber ? 'Enabled' : 'Disabled'}
+                  value={enableLotNumber ? 'Enabled' : 'Disabled'}
                   hint="Controlled from purchase settings"
                 />
               </div>
@@ -478,84 +599,302 @@ export default function ProductOpeningStock() {
         </div>
       </div>
 
-      <div className="px-4 sm:px-6">
-        <SectionCard
-          title="Stock Location"
-          icon={MapPin}
-        >
-          {locations.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {locations.map((location) => (
-                <LocationCard
-                  key={location.id}
-                  location={location}
-                  selected={selectedLocationId === location.id}
-                  onSelect={setSelectedLocationId}
-                />
-              ))}
+      {/* Opening Batches - Table View with Modal */}
+      <div className="">
+        <SectionCard title="Opening Stock Batches" icon={Package}>
+          {/* Header with controls */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {canHaveMultipleBatches
+                  ? 'Add multiple batches for this product with different expiry dates and lot numbers. Opening stock batches are tracked separately, and each batch can have its own expiry date, lot number, and cost.'
+                  : 'Add a single batch for this product and edit quantities directly in the table if needed. To enable multiple batches with expiry tracking, turn on "Product Expiry" in business settings.'}
+              </p>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {enableExpiry && (
+                <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                  <Calendar className="h-3 w-3" />
+                  Expiry enabled
+                </span>
+              )}
+              {enableLotNumber && (
+                <span className="inline-flex items-center gap-1 rounded-sm border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs text-purple-700">
+                  <Hash className="h-3 w-3" />
+                  Lot numbers enabled
+                </span>
+              )}
+            </div>
+            {canHaveMultipleBatches && (
+              <button
+                type="button"
+                onClick={handleOpenAddModal}
+                className="inline-flex items-center gap-2 rounded-sm bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Plus className="h-4 w-4" />
+                Add Batch
+              </button>
+            )}
+          </div>
+
+          {/* Batches Table */}
+          {batches.length > 0 ? (
+            <div className="overflow-x-auto rounded-sm border border-border">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted/30">
+                  <tr>
+                    {renderTableHeaders().map((header) => (
+                      <th
+                        key={header}
+                        className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-background">
+                  {batches.map((batch, index) => (
+                    <tr key={batch.id} className="hover:bg-muted/10 transition-colors">
+                      {renderTableRow(batch, index)}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/20">
+                  <tr>
+                    <td colSpan={1} className="px-4 py-3 text-sm font-semibold text-foreground">
+                      Totals
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">
+                      {totalQuantity.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">
+                      {formatMoney(totalValue, currencyCode, currencyPrecision, currencyPlacement)}
+                    </td>
+                    <td colSpan={renderTableHeaders().length - 3} className="px-4 py-3" />
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           ) : (
-            <div className="rounded-sm border border-dashed border-border p-4 text-sm text-muted-foreground">
-              No business locations were found.
+            <div className="flex flex-col items-center justify-center rounded-sm border-2 border-dashed border-border p-12 text-center">
+              <Package className="mb-3 h-10 w-10 text-muted-foreground" />
+              <h3 className="text-sm font-medium text-foreground">No opening stock batches</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {canHaveMultipleBatches
+                  ? 'Click the "Add Batch" button to record opening stock for this product.'
+                  : 'Add your opening stock batch using the form below.'}
+              </p>
+              {!canHaveMultipleBatches && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddModal}
+                  className="mt-4 inline-flex items-center gap-2 rounded-sm bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Opening Stock
+                </button>
+              )}
             </div>
           )}
-          {selectedLocation ? (
-            <p className="mt-3 text-xs text-muted-foreground">
-              Opening stock will be tracked under <span className="font-medium text-foreground">{selectedLocation.locationName}</span>.
-            </p>
-          ) : null}
         </SectionCard>
       </div>
 
-      <div className="px-4 sm:px-6">
-        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Opening Batches</p>
-            <p className="text-sm text-muted-foreground">
-              Add one or more batches for this product. Batch expiry is shown only when enabled.
-            </p>
+      {/* Add/Edit Batch Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm">
+          <div
+            className="w-full max-w-[96vw] rounded-sm border border-border bg-background shadow-xl md:w-[80vw] md:max-w-[80vw]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b border-border p-5">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">
+                  {editingBatchId ? 'Edit Batch' : 'Add Opening Stock Batch'}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {product.name} • {locationNameById.get(formData.locationId) || 'Select location first'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
+                className="rounded-full p-2 text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <div className="lg:col-span-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Stock Location <span className="text-destructive">*</span>
+                  </label>
+                  <div className="mt-1.5">
+                    <Select
+                      instanceId="opening-stock-location"
+                      value={locationOptions.find((option) => option.value === formData.locationId) ?? null}
+                      options={locationOptions}
+                      onChange={(option) => setFormData({ ...formData, locationId: option?.value || '' })}
+                      placeholder="Select location"
+                      isSearchable
+                      classNamePrefix="react-select"
+                      styles={selectStyles}
+                      menuPortalTarget={document.body}
+                    />
+                  </div>
+                  {formErrors.locationId && <p className="mt-1 text-xs text-destructive">{formErrors.locationId}</p>}
+                </div>
+
+                <div className="lg:col-span-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Quantity <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={formData.quantity || ''}
+                    onChange={(e) => setFormData({ ...formData, quantity: Math.max(0, parseFloat(e.target.value) || 0) })}
+                    className={`mt-1.5 w-full rounded-sm border ${formErrors.quantity ? 'border-destructive' : 'border-border'} bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary`}
+                    placeholder="Enter quantity"
+                  />
+                  {formErrors.quantity && <p className="mt-1 text-xs text-destructive">{formErrors.quantity}</p>}
+                </div>
+
+                <div className="lg:col-span-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Unit Cost (Exclusive of Tax) <span className="text-destructive">*</span>
+                  </label>
+                  <div className="relative mt-1.5">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {currencyPlacement === 'before' ? getCurrencySymbol(currencyCode) : ''}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formData.unitCost || ''}
+                      onChange={(e) => setFormData({ ...formData, unitCost: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      className={`w-full rounded-sm border ${formErrors.unitCost ? 'border-destructive' : 'border-border'} bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary ${
+                        currencyPlacement === 'before' ? 'pl-10' : 'pr-10'
+                      }`}
+                      placeholder="0.00"
+                    />
+                    {currencyPlacement === 'after' && (
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        {getCurrencySymbol(currencyCode)}
+                      </span>
+                    )}
+                  </div>
+                  {formErrors.unitCost && <p className="mt-1 text-xs text-destructive">{formErrors.unitCost}</p>}
+                </div>
+
+                <div className="lg:col-span-1">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Selling Price
+                  </label>
+                  <div className="relative mt-1.5">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                      {currencyPlacement === 'before' ? getCurrencySymbol(currencyCode) : ''}
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={formData.sellingPrice || ''}
+                      onChange={(e) => setFormData({ ...formData, sellingPrice: Math.max(0, parseFloat(e.target.value) || 0) })}
+                      className={`w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary ${
+                        currencyPlacement === 'before' ? 'pl-10' : 'pr-10'
+                      }`}
+                      placeholder={`Default: ${formatMoney(product.defaultSellingPrice || 0, currencyCode, currencyPrecision, currencyPlacement)}`}
+                    />
+                    {currencyPlacement === 'after' && (
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                        {getCurrencySymbol(currencyCode)}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Leave empty to use the product&apos;s default selling price ({formatMoney(product.defaultSellingPrice || 0, currencyCode, currencyPrecision, currencyPlacement)})
+                  </p>
+                </div>
+
+                {enableLotNumber ? (
+                  <div className="lg:col-span-1">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Lot Number <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.lotNumber}
+                      onChange={(e) => setFormData({ ...formData, lotNumber: e.target.value })}
+                      className={`mt-1.5 w-full rounded-sm border ${formErrors.lotNumber ? 'border-destructive' : 'border-border'} bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary`}
+                      placeholder="Enter lot number"
+                    />
+                    {formErrors.lotNumber && <p className="mt-1 text-xs text-destructive">{formErrors.lotNumber}</p>}
+                  </div>
+                ) : null}
+
+                {enableExpiry ? (
+                  <div className="lg:col-span-1">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Expiry Date <span className="text-destructive">*</span>
+                    </label>
+                    <div className="mt-1.5">
+                      <DatePickerField
+                        value={formData.expiryDate}
+                        onChange={(value) => setFormData({ ...formData, expiryDate: value })}
+                        placeholder="Select expiry date"
+                      />
+                    </div>
+                    {formErrors.expiryDate && <p className="mt-1 text-xs text-destructive">{formErrors.expiryDate}</p>}
+                  </div>
+                ) : null}
+
+                <div className="lg:col-span-3">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Notes
+                  </label>
+                  <textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="mt-1.5 min-h-[96px] w-full rounded-sm border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="Optional notes for this batch"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border p-5">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalOpen(false);
+                  resetForm();
+                }}
+                className="rounded-sm border border-border px-4 py-2 text-sm font-medium hover:bg-muted/30"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBatch}
+                className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                <Check className="h-4 w-4" />
+                {editingBatchId ? 'Update Batch' : 'Add Batch'}
+              </button>
+            </div>
           </div>
-          {showExpiry ? (
-            <button
-              type="button"
-              onClick={addBatch}
-              className="inline-flex items-center gap-2 rounded-sm bg-primary px-3.5 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Batch
-            </button>
-          ) : null}
         </div>
+      )}
 
-        <div className="mt-4 space-y-4">
-          {batches.map((batch, index) => (
-            <BatchCard
-              key={batch.id}
-              batch={batch}
-              index={index}
-              canRemove={showExpiry && batches.length > 1}
-              showExpiry={showExpiry}
-              showLotNumber={showLotNumber}
-              onChange={updateBatch}
-              onRemove={removeBatch}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 sm:px-6">
-        <SectionCard title="Opening Stock Summary" icon={Check}>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard icon={Package} label="Total Quantity" value={totalQuantity.toLocaleString()} />
-            <StatCard icon={DollarSign} label="Estimated Cost" value={formatMoney(totalValue, currencyCode, currencyPrecision, currencyPlacement)} />
-            <StatCard icon={MapPin} label="Location" value={selectedLocation?.locationName || 'Not selected'} />
-          </div>
-          <p className="mt-4 text-sm text-muted-foreground">
-            This screen is ready for recording opening stock batches. Once the save flow is connected, these batch cards can be submitted to the API.
-          </p>
-        </SectionCard>
-      </div>
-
+      {/* Image Preview Modal - Keep as is */}
       {previewImage ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-6"

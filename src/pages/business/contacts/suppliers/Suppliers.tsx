@@ -1308,15 +1308,14 @@ export default function Suppliers() {
 
   return (
     <SettingsTabShell
-      title="Suppliers"
+      title="Supplier Management"
       description="Manage your suppliers and track their performance"
     >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between mb-6 gap-4">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-bold text-foreground">
-            <Truck className="w-6 h-6 text-primary" />
-            Supplier Management
+             
           </h2>
           <p className="text-sm text-muted-foreground">
             {stats.total} suppliers • {stats.active} active • {stats.preferred} preferred

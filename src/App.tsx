@@ -36,6 +36,8 @@ import WarrantiesList from './pages/business/warranties/WarrantiesList'
 import EditProduct from './pages/business/products/EditProduct'
 import ProductDetails from './pages/business/products/ProductDetails'
 import ProductOpeningStock from './pages/business/products/ProductOpeningStock'
+import PurchaseOrders from './pages/business/purchases/PurchaseOrders'
+import CreatePurchaseOrder from './pages/business/purchases/CreatePurchaseOrder'
 
 function App() {
   return (
@@ -101,6 +103,10 @@ function App() {
           <Route path="/products/:id/edit" element={<EditProduct />} />
           <Route path="/products/:id/view" element={<ProductDetails />} />
           <Route path="/products/:id/opening-stock" element={<ProductOpeningStock />} />
+
+          {/* PURCHASES */}
+          <Route path="/purchases/order" element={<PurchaseOrders />} />
+          <Route path="/purchases/list/create" element={<CreatePurchaseOrder />} />
         </Route>
       </Route>
 

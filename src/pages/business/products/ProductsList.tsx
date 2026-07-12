@@ -49,108 +49,6 @@ type Product = {
   status: 'active' | 'inactive' | 'draft';
 };
 
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    name: 'Maize Flour 1kg',
-    sku: 'MF-001',
-    barcode: '1234567890123',
-    productType: 'single',
-    unitId: '1',
-    unitName: 'kg',
-    brandId: '1',
-    brandName: 'Generic',
-    categoryId: '1',
-    categoryName: 'Food & Beverages',
-    subCategoryId: '1',
-    subCategoryName: 'Grains',
-    locationIds: ['loc-1', 'loc-2'],
-    locationNames: ['Warehouse A', 'Warehouse B'],
-    manageStock: true,
-    alertQuantity: 50,
-    isForSelling: true,
-    taxType: 'exclusive',
-    taxRate: 16,
-    defaultPurchasePrice: 2.5,
-    defaultSellingPrice: 3.75,
-    currentStock: 420,
-    currentStockValue: 1050,
-    totalUnitsSold: 80,
-    totalUnitsTransferred: 0,
-    totalUnitsAdjusted: 0,
-    profitMargin: 50,
-    createdAt: '2026-07-01T10:30:00',
-    updatedAt: '2026-07-20T10:30:00',
-    status: 'active',
-  },
-  {
-    id: '2',
-    name: 'Cooking Oil 1L',
-    sku: 'CO-001',
-    barcode: '1234567890124',
-    productType: 'single',
-    unitId: '3',
-    unitName: 'L',
-    brandId: '2',
-    brandName: 'Adidas',
-    categoryId: '1',
-    categoryName: 'Food & Beverages',
-    subCategoryId: '2',
-    subCategoryName: 'Oils & Fats',
-    locationIds: ['loc-2', 'loc-3'],
-    locationNames: ['Warehouse B', 'Warehouse C'],
-    manageStock: true,
-    alertQuantity: 100,
-    isForSelling: true,
-    taxType: 'exclusive',
-    taxRate: 16,
-    defaultPurchasePrice: 4.2,
-    defaultSellingPrice: 5.5,
-    currentStock: 120,
-    currentStockValue: 504,
-    totalUnitsSold: 75,
-    totalUnitsTransferred: 5,
-    totalUnitsAdjusted: 0,
-    profitMargin: 31,
-    createdAt: '2026-07-02T14:15:00',
-    updatedAt: '2026-07-19T14:15:00',
-    status: 'active',
-  },
-  {
-    id: '3',
-    name: 'Rice 5kg',
-    sku: 'RC-005',
-    barcode: '1234567890125',
-    productType: 'single',
-    unitId: '1',
-    unitName: 'kg',
-    brandId: '1',
-    brandName: 'Generic',
-    categoryId: '1',
-    categoryName: 'Food & Beverages',
-    subCategoryId: '1',
-    subCategoryName: 'Grains',
-    locationIds: ['loc-1'],
-    locationNames: ['Warehouse A'],
-    manageStock: true,
-    alertQuantity: 60,
-    isForSelling: true,
-    taxType: 'exclusive',
-    taxRate: 16,
-    defaultPurchasePrice: 8,
-    defaultSellingPrice: 11.99,
-    currentStock: 58,
-    currentStockValue: 464,
-    totalUnitsSold: 35,
-    totalUnitsTransferred: 7,
-    totalUnitsAdjusted: 0,
-    profitMargin: 50,
-    createdAt: '2026-07-03T09:45:00',
-    updatedAt: '2026-07-18T09:45:00',
-    status: 'active',
-  },
-];
-
 export default function ProductsList() {
   const navigate = useNavigate();
   const { formatCurrency } = useBusinessCurrency();
@@ -158,7 +56,7 @@ export default function ProductsList() {
   const { categories } = useCategories();
   const { brands } = useBusinessBrands();
   const { locations } = useBusinessLocations();
-  const { products: realProductsRaw, fetchProducts, hasLoaded } = useProducts();
+  const { products: realProductsRaw, fetchProducts } = useProducts();
   const realProducts = realProductsRaw as unknown as Product[] | undefined;
 
   const [activeTab, setActiveTab] = useState<TabType>('analytics');
@@ -170,7 +68,7 @@ export default function ProductsList() {
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [selectedTaxType, setSelectedTaxType] = useState<string>('all');
   const [showNotForSelling, setShowNotForSelling] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [showActions, setShowActions] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Product | null; direction: 'asc' | 'desc' }>({
     key: null,
@@ -204,7 +102,7 @@ export default function ProductsList() {
     showNotForSelling,
   ]);
 
-  const products: Product[] = hasLoaded ? (Array.isArray(realProducts) ? realProducts : []) : mockProducts;
+  const products: Product[] = Array.isArray(realProducts) ? realProducts : [];
 
   const filteredProducts = useMemo(() => {
     let filtered = [...products];

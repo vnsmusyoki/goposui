@@ -7,6 +7,8 @@ export type ProductSearchResult = {
   sku: string | null;
   unitName: string;
   sellingPrice: number;
+  purchasePrice?: number;
+  taxRate?: number;
   productType: 'single' | 'combo' | 'variable';
 };
 
