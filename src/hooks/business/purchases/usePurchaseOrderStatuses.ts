@@ -7,6 +7,8 @@ export type PurchaseOrderStatusDefinition = {
   whatHappens: string;
   editableNote: string;
   stockAffectedNote: string;
+  requiresReceivingItems: boolean;
+  canBeDeleted: boolean;
   prepareInvoice: boolean;
   sortOrder: number;
 };

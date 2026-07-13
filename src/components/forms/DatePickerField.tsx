@@ -18,6 +18,7 @@ type DatePickerFieldProps = {
   className?: string;
   error?: boolean;
   usePortal?: boolean;
+  disabled?: boolean;
 };
 
 export default function DatePickerField({
@@ -28,6 +29,7 @@ export default function DatePickerField({
   maxDate,
   className = '',
   error = false,
+  disabled = false,
 }: DatePickerFieldProps) {
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
 
@@ -37,6 +39,7 @@ export default function DatePickerField({
       <DatePicker
         selected={selectedDate}
         onChange={(date: Date | null) => onChange(date ? formatLocalDate(date) : '')}
+        disabled={disabled}
         dateFormat="yyyy-MM-dd"
         placeholderText={placeholder}
         minDate={minDate}
@@ -46,8 +49,8 @@ export default function DatePickerField({
         showPopperArrow={false}
         shouldCloseOnSelect
         className={`w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${
-          error ? 'border-destructive' : 'border-border'
-        }`}
+          disabled ? 'cursor-not-allowed opacity-60' : ''
+        } ${error ? 'border-destructive' : 'border-border'}`}
       />
     </div>
   );

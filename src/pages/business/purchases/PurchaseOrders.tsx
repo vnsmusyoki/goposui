@@ -1,6 +1,20 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select, { type StylesConfig } from 'react-select';
+import { CKEditor } from '@ckeditor/ckeditor5-react';
+import {
+  ClassicEditor,
+  Essentials,
+  Paragraph,
+  Heading,
+  Bold,
+  Italic,
+  Link,
+  List,
+  BlockQuote,
+  Undo,
+} from 'ckeditor5';
+import 'ckeditor5/ckeditor5.css';
 import {
   ArrowLeft,
   Plus,
@@ -17,6 +31,7 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
+  Loader2,
   Eye,
   Edit,
   Trash2,
@@ -41,7 +56,16 @@ import toast from 'react-hot-toast';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
 import { useBusinessSuppliers } from '@/hooks/business/suppliers/useBusinessSuppliers';
-import { usePurchaseOrders, type PurchaseOrder, type PurchaseOrderStatus, type DeliveryStatus, type PaymentStatus } from '@/hooks/business/purchases/usePurchaseOrders';
+import {
+  usePurchaseOrders,
+  type PurchaseOrder,
+  type PurchaseOrderStatus,
+  type DeliveryStatus,
+  type PaymentStatus,
+  type PurchaseOrderNotificationMode,
+  type SendPurchaseOrderNotificationInput,
+} from '@/hooks/business/purchases/usePurchaseOrders';
+import { usePurchaseOrderStatuses } from '@/hooks/business/purchases/usePurchaseOrderStatuses';
 import { DateRangePicker } from '@/components/forms/DateRangePicker';
 import { ApiError, apiDownload } from '@/lib/api';
 
@@ -97,6 +121,23 @@ type StatusEffect = {
 type ApprovalChannel = 'notification' | 'sms' | 'whatsapp';
 
 type ApprovalChannelState = Record<ApprovalChannel, boolean>;
+
+type DeleteModalState = {
+  order: PurchaseOrder;
+};
+
+type NotificationRecipientMode = PurchaseOrderNotificationMode;
+
+type NotificationFormState = {
+  mode: NotificationRecipientMode;
+  emailTo: string;
+  emailCc: string;
+  emailBcc: string;
+  emailSubject: string;
+  emailMessage: string;
+  smsWhatsappReceivers: string;
+  smsWhatsappMessage: string;
+};
 
 const ORDER_STATUS_EFFECTS: StatusEffect[] = [
   { status: 'draft', meaning: 'Being prepared and can still be edited.', stockUpdated: 'No', supplierBilled: 'No' },
@@ -316,6 +357,25 @@ function approvalChannelLabel(channel: ApprovalChannel) {
   }
 }
 
+function splitCommaSeparatedValues(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function isValidPhoneNumber(value: string) {
+  return /^0\d{9}$/.test(value.trim());
+}
+
+function isValidEmailAddress(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function normalizeTextList(value: string) {
+  return Array.from(new Set(splitCommaSeparatedValues(value)));
+}
+
 // --------------------------------------------------------------------------
 // Sub-components
 // --------------------------------------------------------------------------
@@ -476,6 +536,7 @@ export default function PurchaseOrders() {
   const { settings: businessSettings } = useBusinessSettings();
   const { locations } = useBusinessLocations();
   const { suppliers } = useBusinessSuppliers();
+  const { statuses: purchaseOrderStatuses } = usePurchaseOrderStatuses();
   const {
     purchaseOrders,
     loading,
@@ -483,6 +544,7 @@ export default function PurchaseOrders() {
     fetchPurchaseOrders,
     deletePurchaseOrder,
     updatePurchaseOrder,
+    sendPurchaseOrderNotification,
   } = usePurchaseOrders();
 
   const [activeTab, setActiveTab] = useState<'analytics' | 'list'>('list');
@@ -499,31 +561,30 @@ export default function PurchaseOrders() {
     searchQuery: '',
   });
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<VisibleColumns>(DEFAULT_VISIBLE_COLUMNS);
   const [actionMenuOpenFor, setActionMenuOpenFor] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState<ActionMenuState>(null);
   const [activeOrder, setActiveOrder] = useState<PurchaseOrder | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
-  const deliveryStatusModalOpen = Boolean(Math.random() > 2);
-  const deliveryStatusSaving = false;
-  const selectedDeliveryStatus: any = '';
-  const statusModalOrder: any = null;
-  const purchaseOrderDetailLoading = false;
-  const purchaseOrderDetail: any = null;
-  const approvalReminderChannels: any = {
-    notification: true,
-    sms: false,
-    whatsapp: false,
-  };
-  const approvalReminderMessage: any = '';
-  const selectedApprovalChannels: any = [];
-  const statusEffectMap: any = useMemo(() => buildStatusEffectMap(), []);
-  const setSelectedDeliveryStatus = (_value: PurchaseOrderStatus | '') => undefined;
-  const setApprovalReminderMessage = (_value: string) => undefined;
-  const toggleApprovalReminderChannel = (_channel: ApprovalChannel) => undefined;
-  const closeStatusModal = () => undefined;
-  const handleSaveStatus = async () => undefined;
+  const [deleteModalOrder, setDeleteModalOrder] = useState<PurchaseOrder | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+  const [notificationModalOrder, setNotificationModalOrder] = useState<PurchaseOrder | null>(null);
+  const [notificationSaving, setNotificationSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [notificationForm, setNotificationForm] = useState<NotificationFormState>({
+    mode: 'email',
+    emailTo: '',
+    emailCc: '',
+    emailBcc: '',
+    emailSubject: '',
+    emailMessage: '',
+    smsWhatsappReceivers: '',
+    smsWhatsappMessage: '',
+  });
+  const statusDefinitionMap = useMemo(() => {
+    return new Map(purchaseOrderStatuses.map((status) => [status.code, status]));
+  }, [purchaseOrderStatuses]);
 
   const currencyCode = businessSettings?.currency || 'USD';
   const currencyPrecision = typeof businessSettings?.currencyPrecision === 'number' ? businessSettings.currencyPrecision : 2;
@@ -682,20 +743,151 @@ export default function PurchaseOrders() {
     };
   }, [purchaseOrders]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this purchase order?')) return;
-    setIsDeleting(true);
+  const handleDelete = async () => {
+    if (!deleteModalOrder) {
+      return;
+    }
+
+    const statusDefinition = statusDefinitionMap.get(deleteModalOrder.status);
+    if (statusDefinition && !statusDefinition.canBeDeleted) {
+      const message = `Orders in "${statusDefinition.name}" cannot be deleted.`;
+      setDeleteModalError(message);
+      toast.error(message);
+      return;
+    }
+
+    setDeleteSaving(true);
+    setDeleteModalError(null);
+
     try {
-      await deletePurchaseOrder(id);
-      toast.success('Purchase order deleted successfully');
+      const response = await deletePurchaseOrder(deleteModalOrder.id);
+      toast.success(response.message || 'Purchase order deleted successfully');
+      setDeleteModalOrder(null);
     } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(err.message || 'Failed to delete purchase order');
-      } else {
-        toast.error('Failed to delete purchase order');
-      }
+      const message = err instanceof ApiError ? err.message : 'Failed to delete purchase order';
+      setDeleteModalError(message);
+      toast.error(message);
     } finally {
-      setIsDeleting(false);
+      setDeleteSaving(false);
+    }
+  };
+
+  const openDeleteModal = (order: PurchaseOrder) => {
+    const statusDefinition = statusDefinitionMap.get(order.status);
+    if (statusDefinition && !statusDefinition.canBeDeleted) {
+      const message = `Orders in "${statusDefinition.name}" cannot be deleted.`;
+      setDeleteModalError(message);
+      toast.error(message);
+      return;
+    }
+
+    setDeleteModalError(null);
+    setDeleteModalOrder(order);
+  };
+
+  const openNotificationModal = (order: PurchaseOrder) => {
+    setActionError(null);
+    setNotificationModalOrder(order);
+    setNotificationForm({
+      mode: 'email',
+      emailTo: '',
+      emailCc: '',
+      emailBcc: '',
+      emailSubject: `Purchase Order ${order.referenceNumber}`,
+      emailMessage: '',
+      smsWhatsappReceivers: '',
+      smsWhatsappMessage: '',
+    });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteModalOrder(null);
+    setDeleteModalError(null);
+  };
+  const closeNotificationModal = () => {
+    setNotificationModalOrder(null);
+    setActionError(null);
+  };
+
+  const handleSendNotification = async () => {
+    if (!notificationModalOrder) {
+      return;
+    }
+
+    const nextMode = notificationForm.mode;
+    const emailTo = normalizeTextList(notificationForm.emailTo);
+    const emailCc = normalizeTextList(notificationForm.emailCc);
+    const emailBcc = normalizeTextList(notificationForm.emailBcc);
+    const smsWhatsappReceivers = normalizeTextList(notificationForm.smsWhatsappReceivers);
+    const emailMessage = notificationForm.emailMessage.trim();
+    const smsWhatsappMessage = notificationForm.smsWhatsappMessage.trim();
+    const payload: SendPurchaseOrderNotificationInput = {
+      mode: nextMode,
+      emailTo,
+      emailCc,
+      emailBcc,
+      emailSubject: notificationForm.emailSubject,
+      emailMessage,
+      smsWhatsappReceivers,
+      smsWhatsappMessage,
+      note: `Purchase order notification for ${notificationModalOrder.referenceNumber}`,
+    };
+
+    if (nextMode === 'email') {
+      const invalidEmails = emailTo.filter((item) => !isValidEmailAddress(item));
+      if (emailTo.length === 0 || invalidEmails.length > 0) {
+        const message = 'Enter at least one valid email address for To.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+      if (emailCc.some((item) => !isValidEmailAddress(item))) {
+        const message = 'CC contains an invalid email address.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+      if (emailBcc.some((item) => !isValidEmailAddress(item))) {
+        const message = 'BCC contains an invalid email address.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+      if (!emailMessage) {
+        const message = 'Please type the email message.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+    } else {
+      const invalidPhones = smsWhatsappReceivers.filter((item) => !isValidPhoneNumber(item));
+      if (smsWhatsappReceivers.length === 0 || invalidPhones.length > 0) {
+        const message = 'Enter at least one valid phone number starting with 0 and 10 digits long.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+      if (!smsWhatsappMessage) {
+        const message = 'Please type the SMS/WhatsApp message.';
+        setActionError(message);
+        toast.error(message);
+        return;
+      }
+    }
+
+    setNotificationSaving(true);
+    setActionError(null);
+
+    try {
+      const response = await sendPurchaseOrderNotification(notificationModalOrder.id, payload);
+      toast.success(response.message || 'Notification queued successfully');
+      setNotificationModalOrder(null);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to send notification';
+      setActionError(message);
+      toast.error(message);
+    } finally {
+      setNotificationSaving(false);
     }
   };
 
@@ -862,34 +1054,20 @@ export default function PurchaseOrders() {
         navigate(`/purchases/orders/${order.id}/edit`);
         return;
       case 'delete':
-        await handleDelete(order.id);
+        openDeleteModal(order);
         return;
       case 'edit-delivery':
         navigate(`/purchases/orders/${order.id}/update-status`);
         return;
       case 'send-notification':
-        toast.success(`Notification sent for ${order.referenceNumber}`);
+        openNotificationModal(order);
         return;
       default:
         return;
     }
   };
 
-  if (error) {
-    return (
-      <div className="flex h-[60vh] flex-col items-center justify-center gap-4">
-        <AlertCircle className="h-12 w-12 text-destructive" />
-        <h2 className="text-xl font-semibold text-foreground">Failed to load purchase orders</h2>
-        <p className="text-sm text-muted-foreground">{error}</p>
-        <button
-          onClick={() => fetchPurchaseOrders()}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
+  const pageErrorMessage = error || actionError;
 
   return (
     <div className="space-y-6 pb-10">
@@ -924,6 +1102,27 @@ export default function PurchaseOrders() {
           </div>
         </div>
       </div>
+
+      {pageErrorMessage ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium">Something needs attention</p>
+              <p className="mt-1 text-destructive/90">{pageErrorMessage}</p>
+            </div>
+            {error ? (
+              <button
+                type="button"
+                onClick={() => fetchPurchaseOrders()}
+                className="rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+              >
+                Retry
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Filters Card */}
       <div className="">
@@ -1620,90 +1819,144 @@ export default function PurchaseOrders() {
         )}
       </div>
 
-      {deliveryStatusModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 px-0 py-0 backdrop-blur-sm md:items-center md:px-4 md:py-6"
-          onClick={closeStatusModal}
-        >
+      {deleteModalOrder ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6 backdrop-blur-sm" onClick={closeDeleteModal}>
           <div
-            className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden rounded-sm border border-border bg-card shadow-2xl md:h-[85vh] md:w-4/5 md:max-w-[80vw]"
+            className="w-full max-w-xl rounded-xl border border-border bg-card shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Update order status
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-foreground">
-                  {statusModalOrder?.referenceNumber ?? 'Purchase Order'}
-                </h3>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-destructive">Delete purchase order</p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">{deleteModalOrder.referenceNumber}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Choose the new order status and save it to update the purchase order flow.
+                  This will soft delete the order and hide it from the active list.
                 </p>
               </div>
               <button
                 type="button"
-                onClick={closeStatusModal}
+                onClick={closeDeleteModal}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
-                aria-label="Close status modal"
+                aria-label="Close delete modal"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 py-5 lg:grid-cols-[1fr_1.1fr]">
-              <div className="space-y-4">
-                <div className="p-4  transition-all duration-200">
-                  <label className="mb-2 block text-sm font-medium text-foreground">Order Status</label>
-                  <Select
-                    value={
-                      ORDER_STATUS_OPTIONS.find((option) => option.value === selectedDeliveryStatus) ?? null
-                    }
-                    onChange={(option) => setSelectedDeliveryStatus((option?.value ?? '') as PurchaseOrderStatus | '')}
-                    options={ORDER_STATUS_OPTIONS}
-                    placeholder="Select status"
-                    isSearchable={false}
-                    styles={purchaseOrderStatusSelectStyles()}
-                    classNamePrefix="react-select"
-                  />
-                  {selectedDeliveryStatus ? (
-                    <div className="mt-3   transition-all duration-200">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-primary">Status meaning</p>
-                      <p className="mt-1 text-sm text-foreground">
-                        {statusEffectMap[selectedDeliveryStatus]?.meaning ?? 'Status information not available.'}
-                      </p>
-                    </div>
-                  ) : null}
+            <div className="space-y-4 px-5 py-5">
+              <div className="rounded-xl border border-border bg-background p-4 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Supplier</span>
+                  <span className="font-medium text-foreground">{deleteModalOrder.supplierName}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Status</span>
+                  <StatusBadge status={deleteModalOrder.status} />
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-medium text-foreground">
+                    {formatMoney(deleteModalOrder.totalAmount, currencyCode, currencyPrecision, currencyPlacement)}
+                  </span>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className=" p-4 transition-all duration-200">
-                  <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
-                  {purchaseOrderDetailLoading && !purchaseOrderDetail ? (
-                    <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                      Loading purchase order details...
-                    </div>
-                  ) : (
+              <p className="text-sm text-muted-foreground">
+                If the status is not marked as deletable in the database, the server will block this action.
+              </p>
+              {deleteModalError ? (
+                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                  {deleteModalError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={deleteSaving}
+                className="inline-flex items-center justify-center rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deleteSaving ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Deleting...
+                  </span>
+                ) : (
+                  'Delete Order'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {notificationModalOrder ? (
+        <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 px-0 py-0 backdrop-blur-sm md:items-center md:px-4 md:py-6" onClick={closeNotificationModal}>
+          <div
+            className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl md:h-[90vh] md:w-4/5 md:max-w-[80vw] md:rounded-sm"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Send notification
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">{notificationModalOrder.referenceNumber}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Compose the message and choose the channel for this purchase order.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeNotificationModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close notification modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+              {actionError ? (
+                <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <p>{actionError}</p>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
                     <div className="mt-3 space-y-2 text-sm">
                       <div className="flex justify-between gap-4">
                         <span className="text-muted-foreground">Reference</span>
-                        <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.referenceNumber ?? statusModalOrder?.referenceNumber ?? '-'}</span>
+                        <span className="font-medium text-foreground">{notificationModalOrder.referenceNumber}</span>
                       </div>
                       <div className="flex justify-between gap-4">
                         <span className="text-muted-foreground">Supplier</span>
-                        <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.supplierName ?? statusModalOrder?.supplierName ?? '-'}</span>
+                        <span className="font-medium text-foreground">{notificationModalOrder.supplierName}</span>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Current Status</span>
-                        <StatusBadge status={purchaseOrderDetail?.purchaseOrder.status ?? statusModalOrder?.status ?? 'draft'} />
+                        <span className="text-muted-foreground">Status</span>
+                        <StatusBadge status={notificationModalOrder.status} />
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span className="text-muted-foreground">Total</span>
-                        <span className="text-right font-medium text-foreground">
-                          {`${purchaseOrderDetail?.purchaseOrder.itemsCount ?? statusModalOrder?.itemsCount ?? 0} item${(purchaseOrderDetail?.purchaseOrder.itemsCount ?? statusModalOrder?.itemsCount ?? 0) === 1 ? '' : 's'} · ${formatMoney(
-                            purchaseOrderDetail?.purchaseOrder.totalAmount ?? statusModalOrder?.totalAmount ?? 0,
+                        <span className="font-medium text-foreground">
+                          {`${notificationModalOrder.itemsCount} item${notificationModalOrder.itemsCount === 1 ? '' : 's'} · ${formatMoney(
+                            notificationModalOrder.totalAmount,
                             currencyCode,
                             currencyPrecision,
                             currencyPlacement,
@@ -1711,103 +1964,147 @@ export default function PurchaseOrders() {
                         </span>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-background p-4">
+                    <p className="text-sm font-semibold text-foreground">Delivery Channels</p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNotificationForm((current) => ({ ...current, mode: 'email' }))}
+                        className={`inline-flex flex-1 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                          notificationForm.mode === 'email'
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-foreground hover:bg-surface-alt'
+                        }`}
+                      >
+                        Email
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNotificationForm((current) => ({ ...current, mode: 'sms_whatsapp' }))}
+                        className={`inline-flex flex-1 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
+                          notificationForm.mode === 'sms_whatsapp'
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-border text-foreground hover:bg-surface-alt'
+                        }`}
+                      >
+                        Sms/Whatsapp
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {notificationForm.mode === 'email' ? (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-sm font-medium text-foreground">To</label>
+                          <input
+                            value={notificationForm.emailTo}
+                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailTo: event.target.value }))}
+                            placeholder="person@example.com, second@example.com"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">Separate multiple emails with commas.</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="mb-1 block text-sm font-medium text-foreground">Subject</label>
+                          <input
+                            value={notificationForm.emailSubject}
+                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailSubject: event.target.value }))}
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-foreground">CC</label>
+                          <input
+                            value={notificationForm.emailCc}
+                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailCc: event.target.value }))}
+                            placeholder="cc@example.com"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium text-foreground">BCC</label>
+                          <input
+                            value={notificationForm.emailBcc}
+                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailBcc: event.target.value }))}
+                            placeholder="bcc@example.com"
+                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-foreground">Message</label>
+                        <div className="overflow-hidden rounded-lg border border-border bg-background outline-none focus-within:ring-1 focus-within:ring-primary">
+                          <CKEditor
+                            editor={ClassicEditor}
+                            data={notificationForm.emailMessage}
+                            config={{
+                              licenseKey: 'GPL',
+                              plugins: [Essentials, Paragraph, Heading, Bold, Italic, Link, List, BlockQuote, Undo],
+                              toolbar: ['undo', 'redo', '|', 'heading', '|', 'bold', 'italic', 'link', '|', 'bulletedList', 'numberedList', 'blockQuote'],
+                              placeholder: 'Write the email message...',
+                            }}
+                            onChange={(_, editor) => {
+                              setNotificationForm((current) => ({ ...current, emailMessage: editor.getData() }));
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-foreground">Receiver Phone Numbers</label>
+                        <input
+                          value={notificationForm.smsWhatsappReceivers}
+                          onChange={(event) => setNotificationForm((current) => ({ ...current, smsWhatsappReceivers: event.target.value }))}
+                          placeholder="0712345678, 0723456789"
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">Use commas to separate multiple numbers. Each number must start with 0 and have 10 digits.</p>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-foreground">Message</label>
+                        <textarea
+                          value={notificationForm.smsWhatsappMessage}
+                          onChange={(event) => setNotificationForm((current) => ({ ...current, smsWhatsappMessage: event.target.value }))}
+                          rows={9}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          placeholder="Type the message..."
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
-
-              {selectedDeliveryStatus === 'pending_approval' ? (
-                <div className=" bg-transparent p-4 transition-all duration-200 lg:col-span-2">
-                  <div className="flex flex-col gap-2  pb-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
-                        Approval Reminder
-                      </p>
-                      <h4 className="mt-1 text-base font-semibold ">
-                        Choose one or more channels for this approval request.
-                      </h4>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        The reminder will be queued for every channel you switch on below.
-                      </p>
-                    </div>
-                    <div className="inline-flex items-center rounded-full border border-amber-200 bg-background px-3 py-1 text-xs font-medium text-amber-800">
-                      {selectedApprovalChannels.length} channel{selectedApprovalChannels.length === 1 ? '' : 's'} selected
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    {(['notification', 'sms', 'whatsapp'] as ApprovalChannel[]).map((channel) => {
-                      const checked = approvalReminderChannels[channel];
-
-                      return (
-                        <div
-                          key={channel}
-                          className={`flex items-center justify-between gap-4 border px-4 py-3 transition-all duration-200 ${
-                            checked
-                              ? 'border-primary bg-background shadow-sm'
-                              : 'border-primary/70 bg-transparent'
-                          }`}
-                        >
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{approvalChannelLabel(channel)}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {channel === 'notification'
-                                ? 'In-app alert'
-                                : channel === 'sms'
-                                  ? 'Text message'
-                                  : 'WhatsApp message'}
-                            </p>
-                          </div>
-                          <ToggleSwitch
-                            checked={checked}
-                            onChange={() => toggleApprovalReminderChannel(channel)}
-                            ariaLabel={`${approvalChannelLabel(channel)} approval reminder`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-amber-800">
-                      Reminder Message
-                    </label>
-                    <textarea
-                      value={approvalReminderMessage}
-                      onChange={(event) => setApprovalReminderMessage(event.target.value)}
-                      rows={4}
-                      className="w-full rounded-sm border border-primary bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Type the message that should be sent with this approval reminder..."
-                    />
-                  </div>
-                </div>
-              ) : null}
             </div>
 
-            <div className="shrink-0 flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs text-muted-foreground">
-                Changing the order status can affect stock movement, supplier billing, and downstream approval steps.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeStatusModal}
-                  className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSaveStatus()}
-                  disabled={deliveryStatusSaving || purchaseOrderDetailLoading}
-                  className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {deliveryStatusSaving ? 'Saving...' : 'Save Status'}
-                </button>
-              </div>
+            <div className="shrink-0 flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={closeNotificationModal}
+                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendNotification()}
+                disabled={notificationSaving}
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {notificationSaving ? 'Sending...' : 'Send Notification'}
+              </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

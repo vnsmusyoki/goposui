@@ -42,6 +42,24 @@ type PurchaseOrderExpenseInput = {
   sortOrder?: number;
 };
 
+export type PurchaseOrderNotificationMode = 'email' | 'sms_whatsapp';
+
+export type SendPurchaseOrderNotificationInput = {
+  mode: PurchaseOrderNotificationMode;
+  emailTo?: string[];
+  emailCc?: string[];
+  emailBcc?: string[];
+  emailSubject?: string;
+  emailMessage?: string;
+  smsWhatsappReceivers?: string[];
+  smsWhatsappMessage?: string;
+  note?: string;
+};
+
+type SendPurchaseOrderNotificationResponse = {
+  message?: string;
+};
+
 export type PurchaseOrder = {
   id: string;
   orderDate: string;
@@ -96,6 +114,7 @@ type CreatePurchaseOrderInput = {
   deliveryStatus?: DeliveryStatus;
   paymentStatus?: PaymentStatus;
   approvalReminderChannels?: ('notification' | 'sms' | 'whatsapp')[];
+  statusChangeReason?: string;
   items: PurchaseOrderLineInput[];
   additionalExpenses?: PurchaseOrderExpenseInput[];
   grandTotal?: number;
@@ -153,6 +172,7 @@ function buildPurchaseOrderPayload(data: CreatePurchaseOrderInput) {
     payment_status: data.paymentStatus ?? 'unpaid',
     approval_reminder_channels: data.approvalReminderChannels ?? null,
     approval_reminder_message: data.approvalReminderMessage ?? null,
+    status_change_reason: data.statusChangeReason ?? null,
     items: data.items.map((item) => ({
       ...item,
     })),
@@ -205,9 +225,37 @@ export function usePurchaseOrders() {
       });
 
       setPurchaseOrders((current) => current.filter((order) => order.id !== id));
-      return normalizePurchaseOrder(response);
+      return response;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to delete purchase order.';
+      setError(message);
+      throw err;
+    }
+  }, []);
+
+  const sendPurchaseOrderNotification = useCallback(async (id: string, data: SendPurchaseOrderNotificationInput) => {
+    const purchaseOrderId = id.trim();
+    if (!purchaseOrderId) {
+      throw new ApiError('Purchase order ID is required.', 400, { message: 'Purchase order ID is required.' });
+    }
+
+    try {
+      return await apiRequest<SendPurchaseOrderNotificationResponse>(`/purchases/orders/${purchaseOrderId}/notify`, {
+        method: 'POST',
+        body: JSON.stringify({
+          notification_mode: data.mode,
+          email_to: data.emailTo ?? [],
+          email_cc: data.emailCc ?? [],
+          email_bcc: data.emailBcc ?? [],
+          email_subject: data.emailSubject ?? '',
+          email_message: data.emailMessage ?? '',
+          sms_whatsapp_receivers: data.smsWhatsappReceivers ?? [],
+          sms_whatsapp_message: data.smsWhatsappMessage ?? '',
+          note: data.note ?? '',
+        }),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to send purchase order notification.';
       setError(message);
       throw err;
     }
@@ -274,5 +322,6 @@ export function usePurchaseOrders() {
     createPurchaseOrder,
     updatePurchaseOrder,
     deletePurchaseOrder,
+    sendPurchaseOrderNotification,
   };
 }

@@ -9,12 +9,14 @@ import { useProductSettings } from '@/hooks/business/settings/useProductSettings
 import { usePurchasesSettings } from '@/hooks/business/settings/usePurchasesSettings';
 import { usePurchaseOrderDetails, type PurchaseOrderDetailItem } from '@/hooks/business/purchases/usePurchaseOrderDetails';
 import { usePurchaseOrderStatuses, type PurchaseOrderStatusDefinition } from '@/hooks/business/purchases/usePurchaseOrderStatuses';
-import { usePurchaseOrders, type PurchaseOrderStatus, type DeliveryStatus, type PaymentStatus } from '@/hooks/business/purchases/usePurchaseOrders';
+import { type PurchaseOrderStatus, type DeliveryStatus, type PaymentStatus } from '@/hooks/business/purchases/usePurchaseOrders';
+import { useUpdatePurchaseOrderStatus } from '@/hooks/business/purchases/useUpdatePurchaseOrderStatus';
 import { ApiError } from '@/lib/api';
 
 type SelectOption = {
   value: string;
   label: string;
+  isDisabled?: boolean;
 };
 
 type ApprovalChannel = 'notification' | 'sms' | 'whatsapp';
@@ -26,6 +28,7 @@ type ReceivingRow = {
   sku: string;
   unit: string;
   orderQuantity: number;
+  alreadyReceivedQuantity: number;
   balanceQuantity: number;
   receivedQuantity: number;
   manufactureDate: string;
@@ -292,15 +295,11 @@ function normalizePhoneNumbers(values: string[]): string[] {
   return normalized;
 }
 
-function isReceivingStatus(status: string) {
-  return status === 'received' || status === 'partially_received';
-}
-
 function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
   return items.map((item) => {
-    const receivedQuantity = Number(item.receivedQuantity ?? 0);
+    const alreadyReceivedQuantity = Math.max(Number(item.itemsReceived ?? item.receivedQuantity ?? 0), 0);
     const orderQuantity = Number(item.orderQuantity ?? 0);
-    const balanceQuantity = Math.max(Number(item.balanceQuantity ?? orderQuantity - receivedQuantity), 0);
+    const balanceQuantity = Math.max(orderQuantity - alreadyReceivedQuantity, 0);
     const unitCostBeforeDiscount = Number(item.unitCostBeforeDiscount ?? 0);
     const discountPercentage = Number(item.discountPercentage ?? 0);
     const unitCostBeforeTax = Number(item.unitCostBeforeTax ?? 0);
@@ -312,8 +311,9 @@ function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
       sku: item.sku,
       unit: item.unit,
       orderQuantity,
+      alreadyReceivedQuantity,
       balanceQuantity,
-      receivedQuantity: Math.max(Math.min(receivedQuantity, orderQuantity), 0),
+      receivedQuantity: 0,
       manufactureDate: item.manufactureDate || '',
       expiryDate: item.expiryDate || '',
       lotNumber: item.lotNumber || '',
@@ -346,6 +346,22 @@ function getStatusDefinition(statuses: PurchaseOrderStatusDefinition[], selected
   return statuses.find((entry) => entry.code === selectedStatus);
 }
 
+function getAllowedPurchaseOrderStatusTransitions(currentStatus: string) {
+  const status = currentStatus.trim().toLowerCase();
+  const allowed: Record<string, string[]> = {
+    draft: ['pending_approval', 'approved', 'cancelled'],
+    pending_approval: ['approved', 'cancelled'],
+    approved: ['ordered', 'cancelled'],
+    ordered: ['partially_received', 'received', 'cancelled'],
+    partially_received: ['received', 'cancelled'],
+    received: ['completed', 'closed', 'cancelled'],
+    completed: ['closed'],
+    cancelled: [],
+    closed: [],
+  };
+  return allowed[status] ?? [];
+}
+
 export default function UpdatePurchaseOrderStatus() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -353,13 +369,15 @@ export default function UpdatePurchaseOrderStatus() {
   const { settings: productSettings } = useProductSettings();
   const { settings: purchasesSettings } = usePurchasesSettings();
   const { statuses: purchaseOrderStatuses, loading: statusesLoading } = usePurchaseOrderStatuses();
-  const { purchaseOrder: purchaseOrderDetail, loading: purchaseOrderDetailLoading, fetchPurchaseOrder } = usePurchaseOrderDetails();
-  const { updatePurchaseOrder, loading: saving } = usePurchaseOrders();
+  const { purchaseOrder: purchaseOrderDetail, loading: purchaseOrderDetailLoading, error: purchaseOrderDetailError, fetchPurchaseOrder } =
+    usePurchaseOrderDetails();
+  const { savePurchaseOrderStatus, loading: saving, error: saveError, clearError: clearSaveError } = useUpdatePurchaseOrderStatus();
 
   const [selectedStatus, setSelectedStatus] = useState<string>('');
   const [approvalReminderChannels, setApprovalReminderChannels] = useState<ApprovalChannelState>(getDefaultApprovalChannelState());
   const [approvalReminderMessage, setApprovalReminderMessage] = useState('');
   const [approvalReminderReceiversText, setApprovalReminderReceiversText] = useState('');
+  const [statusChangeReason, setStatusChangeReason] = useState('');
   const [receivingRows, setReceivingRows] = useState<ReceivingRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -368,7 +386,9 @@ export default function UpdatePurchaseOrderStatus() {
   const currencyPlacement = businessSettings?.currencySymbolPlacement === 'after' ? 'after' : 'before';
 
   const detail = purchaseOrderDetail?.purchaseOrder;
+  const currentStatus = detail?.status ?? '';
   const statusDefinition = useMemo(() => getStatusDefinition(purchaseOrderStatuses, selectedStatus), [purchaseOrderStatuses, selectedStatus]);
+  const allowedTransitions = useMemo(() => getAllowedPurchaseOrderStatusTransitions(currentStatus), [currentStatus]);
   const approvalChannelsSelected = useMemo(
     () =>
       (Object.entries(approvalReminderChannels) as Array<[ApprovalChannel, boolean]>)
@@ -381,8 +401,10 @@ export default function UpdatePurchaseOrderStatus() {
   const showManufactureDate = Boolean(productSettings?.enableProductExpiry && productSettings.expiryTrackingMethod === 'manufacturing_and_period');
   const showExpiryDate = Boolean(productSettings?.enableProductExpiry);
   const showLotNumber = Boolean(purchasesSettings?.enableLotNumber);
-  const showReceivingGrid = isReceivingStatus(selectedStatus);
+  const showReceivingGrid = Boolean(statusDefinition?.requiresReceivingItems);
+  const statusChanged = Boolean(detail?.status) && selectedStatus !== detail?.status;
   const today = useMemo(() => getLocalDateStart(), []);
+  const pageErrors = [formError, purchaseOrderDetailError, saveError].filter(Boolean) as string[];
 
   useEffect(() => {
     if (!id) return;
@@ -390,6 +412,7 @@ export default function UpdatePurchaseOrderStatus() {
       .then((response) => {
         setSelectedStatus(response.purchaseOrder.status || '');
         setApprovalReminderMessage(`Please review and approve purchase order ${response.purchaseOrder.referenceNumber}.`);
+        setStatusChangeReason('');
         setReceivingRows(buildReceivingRows(response.items ?? []));
       })
       .catch(() => {
@@ -420,7 +443,7 @@ export default function UpdatePurchaseOrderStatus() {
           const nextQuantity = Math.max(Number(value) || 0, 0);
           return {
             ...row,
-            receivedQuantity: Math.min(nextQuantity, row.orderQuantity),
+            receivedQuantity: Math.min(nextQuantity, row.balanceQuantity),
           };
         }
         if (field === 'manufactureDate' || field === 'expiryDate' || field === 'lotNumber') {
@@ -495,10 +518,14 @@ export default function UpdatePurchaseOrderStatus() {
       }
     }
 
+    if (statusChanged && !statusChangeReason.trim()) {
+      return 'Please provide a reason for the status change.';
+    }
+
     if (showReceivingGrid) {
-      const invalidRow = receivingRows.find((row) => row.receivedQuantity < 0 || row.receivedQuantity > row.orderQuantity);
+      const invalidRow = receivingRows.find((row) => row.receivedQuantity < 0 || row.receivedQuantity > row.balanceQuantity);
       if (invalidRow) {
-        return `Received quantity for ${invalidRow.productName} must be between 0 and the ordered quantity.`;
+        return `Received quantity for ${invalidRow.productName} must be between 0 and the remaining balance.`;
       }
 
       const invalidDateRow = receivingRows.find((row) => {
@@ -535,7 +562,8 @@ export default function UpdatePurchaseOrderStatus() {
     const detailItems = purchaseOrderDetail?.items ?? [];
 
     try {
-      const response = await updatePurchaseOrder(id, {
+      clearSaveError();
+      const response = await savePurchaseOrderStatus(id, {
         supplierId: detail?.supplierId ?? '',
         referenceNumber: detail?.referenceNumber ?? '',
         orderDate: detail?.orderDate ?? '',
@@ -573,7 +601,7 @@ export default function UpdatePurchaseOrderStatus() {
           manufactureDate: row.manufactureDate || '',
           expiryDate: row.expiryDate || '',
           lotNumber: row.lotNumber || '',
-          receivedQuantity: row.receivedQuantity,
+          receivedQuantity: Math.min(row.alreadyReceivedQuantity + row.receivedQuantity, row.orderQuantity),
         })),
         additionalExpenses: (detail?.additionalExpenses ?? []).map((expense, index) => ({
           name: expense.name,
@@ -592,6 +620,7 @@ export default function UpdatePurchaseOrderStatus() {
         approvalReminderChannels: selectedStatus === 'pending_approval' ? selectedChannels : undefined,
         approvalReminderMessage: selectedStatus === 'pending_approval' ? approvalReminderMessage : undefined,
         approvalReminderReceivers: selectedStatus === 'pending_approval' ? receiverList : undefined,
+        statusChangeReason: statusChanged ? statusChangeReason.trim() : undefined,
       });
       toast.success(response.message || 'Purchase order status updated successfully');
       navigate('/purchases/order');
@@ -609,8 +638,12 @@ export default function UpdatePurchaseOrderStatus() {
       purchaseOrderStatuses.map((status) => ({
         value: status.code,
         label: status.name,
+        isDisabled:
+          Boolean(currentStatus) &&
+          currentStatus !== status.code &&
+          !allowedTransitions.includes(status.code),
       })),
-    [purchaseOrderStatuses],
+    [allowedTransitions, currentStatus, purchaseOrderStatuses],
   );
 
   const currentTotalLabel = `${detail?.itemsCount ?? 0} item${(detail?.itemsCount ?? 0) === 1 ? '' : 's'} · ${formatMoney(
@@ -623,7 +656,7 @@ export default function UpdatePurchaseOrderStatus() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto w-full  py-5 pb-10 lg:pb-12">
-        <div className="overflow-hidden border border-border bg-card shadow-sm">
+        <div className="overflow-hidden bg-card ">
           <div className="flex flex-col gap-4 border-b border-border px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <button
@@ -651,6 +684,17 @@ export default function UpdatePurchaseOrderStatus() {
           </div>
 
           <div className="px-5 py-5">
+            {pageErrors.length > 0 ? (
+              <div className="mb-5 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <p className="font-semibold">Please review the following issue{pageErrors.length === 1 ? '' : 's'}:</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {pageErrors.map((error) => (
+                    <li key={error}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
               <div className="space-y-4">
                 <div className="bg-background p-4">
@@ -660,6 +704,7 @@ export default function UpdatePurchaseOrderStatus() {
                     value={statusOptions.find((option) => option.value === selectedStatus) ?? null}
                     onChange={(option) => setSelectedStatus(option?.value ?? '')}
                     options={statusOptions}
+                    isOptionDisabled={(option) => Boolean(option.isDisabled)}
                     placeholder={statusesLoading ? 'Loading statuses...' : 'Select status'}
                     isSearchable
                     menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
@@ -674,6 +719,29 @@ export default function UpdatePurchaseOrderStatus() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-primary">What this status does</p>
                       <p className="mt-1 text-sm text-foreground">
                         {statusDefinition?.whatHappens || 'Status information not available.'}
+                      </p>
+                      {statusDefinition?.requiresReceivingItems ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          This status opens the receiving section so you can capture stock quantities before closing the order.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {statusChanged ? (
+                    <div className="mt-3 border border-border bg-background p-3">
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">
+                        Reason for status change
+                      </label>
+                      <textarea
+                        value={statusChangeReason}
+                        onChange={(event) => setStatusChangeReason(event.target.value)}
+                        rows={3}
+                        className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
+                        placeholder="Explain why this purchase order status is changing..."
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        This reason is saved to purchase order logs together with the status change.
                       </p>
                     </div>
                   ) : null}
@@ -715,12 +783,12 @@ export default function UpdatePurchaseOrderStatus() {
 
           {showReceivingGrid ? (
             <div className="border-t border-border px-5 py-5">
-              <div className="border border-border bg-background p-4 shadow-sm">
+              <div className=" bg-background p-4 ">
                 <div className="flex flex-col gap-1 border-b border-border pb-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-foreground">Received Items</p>
                     <p className="text-xs text-muted-foreground">
-                      Enter what arrived for each product. Remaining quantity is calculated automatically and never goes below zero.
+                      Enter what arrived for each product. Remaining quantity is calculated automatically.
                     </p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-alt px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -729,14 +797,18 @@ export default function UpdatePurchaseOrderStatus() {
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-4">
+                <div className="mt-4">
                   {receivingRows.map((row) => {
-                    const balance = Math.min(Math.max(row.orderQuantity - row.receivedQuantity, 0), row.orderQuantity);
+                    const balance = Math.min(Math.max(row.balanceQuantity - row.receivedQuantity, 0), row.balanceQuantity);
                     const subtotalBeforeTax = getSubtotalBeforeTax(row);
                     const taxAmount = getTaxAmount(row);
                     const subtotalAfterTax = getSubtotalAfterTax(row);
+                    const rowLocked = row.balanceQuantity <= 0;
+                    const editableNumberClass = `w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground ${
+                      rowLocked ? 'opacity-60' : ''
+                    }`;
                     return (
-                      <div key={row.id} className="border border-border bg-background p-4 shadow-sm">
+                      <div key={row.id} className={`bg-background border-b border-border pb-2  ${rowLocked ? 'opacity-70' : ''}`}>
                         <div className="border-b border-border pb-4">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -746,10 +818,16 @@ export default function UpdatePurchaseOrderStatus() {
                                   Lot: {row.lotNumber || 'Not set'}
                                 </span>
                               ) : null}
+                              {rowLocked ? (
+                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                                  Fully supplied
+                                </span>
+                              ) : null}
                             </div>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                               <span>{row.unit || 'Unit not set'}</span>
                               <span>SKU: {row.sku || '—'}</span>
+                              <span>Already received: {Math.max(0, row.alreadyReceivedQuantity)}</span>
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-3 lg:grid-cols-4">
                               <span>
@@ -791,97 +869,102 @@ export default function UpdatePurchaseOrderStatus() {
                               <input
                                 type="number"
                                 min={0}
-                                max={row.orderQuantity}
+                                max={row.balanceQuantity}
                                 step="0.01"
                                 value={formatEditableNumberInput(row.receivedQuantity)}
                                 onChange={(event) =>
                                   updateReceivingRow(
                                     row.id,
                                     'receivedQuantity',
-                                    parseEditableNumberInput(event.target.value, { min: 0, max: row.orderQuantity }),
+                                    parseEditableNumberInput(event.target.value, { min: 0, max: row.balanceQuantity }),
                                   )
                                 }
-                                inputMode="decimal"
-                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
+                              inputMode="decimal"
+                              disabled={rowLocked}
+                              className={editableNumberClass}
+                            />
+                          </div>
 
                           <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Unit Cost Before Discount
                             </label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={formatEditableNumberInput(row.unitCostBeforeDiscount)}
-                                onChange={(event) =>
-                                  updateReceivingRow(
-                                    row.id,
-                                    'unitCostBeforeDiscount',
-                                    parseEditableNumberInput(event.target.value, { min: 0 }),
-                                  )
-                                }
-                                inputMode="decimal"
-                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={formatEditableNumberInput(row.unitCostBeforeDiscount)}
+                              onChange={(event) =>
+                                updateReceivingRow(
+                                  row.id,
+                                  'unitCostBeforeDiscount',
+                                  parseEditableNumberInput(event.target.value, { min: 0 }),
+                                )
+                              }
+                              inputMode="decimal"
+                              disabled={rowLocked}
+                              className={editableNumberClass}
+                            />
+                          </div>
 
                           <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Discount Percentage
                             </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                step="0.01"
-                                value={formatEditableNumberInput(row.discountPercentage)}
-                                onChange={(event) =>
-                                  updateReceivingRow(
-                                    row.id,
-                                    'discountPercentage',
-                                    parseEditableNumberInput(event.target.value, { min: 0, max: 100 }),
-                                  )
-                                }
-                                inputMode="decimal"
-                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.01"
+                              value={formatEditableNumberInput(row.discountPercentage)}
+                              onChange={(event) =>
+                                updateReceivingRow(
+                                  row.id,
+                                  'discountPercentage',
+                                  parseEditableNumberInput(event.target.value, { min: 0, max: 100 }),
+                                )
+                              }
+                              inputMode="decimal"
+                              disabled={rowLocked}
+                              className={editableNumberClass}
+                            />
+                          </div>
 
                           <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Unit Cost Before Tax
                             </label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={formatEditableNumberInput(row.unitCostBeforeTax)}
-                                onChange={(event) =>
-                                  updateReceivingRow(row.id, 'unitCostBeforeTax', parseEditableNumberInput(event.target.value, { min: 0 }))
-                                }
-                                inputMode="decimal"
-                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={formatEditableNumberInput(row.unitCostBeforeTax)}
+                              onChange={(event) =>
+                                updateReceivingRow(row.id, 'unitCostBeforeTax', parseEditableNumberInput(event.target.value, { min: 0 }))
+                              }
+                              inputMode="decimal"
+                              disabled={rowLocked}
+                              className={editableNumberClass}
+                            />
+                          </div>
 
                           <div>
                             <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               Unit Cost After Tax
                             </label>
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={formatEditableNumberInput(row.unitCostAfterTax)}
-                                onChange={(event) =>
-                                  updateReceivingRow(row.id, 'unitCostAfterTax', parseEditableNumberInput(event.target.value, { min: 0 }))
-                                }
-                                inputMode="decimal"
-                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                              />
-                            </div>
+                            <input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              value={formatEditableNumberInput(row.unitCostAfterTax)}
+                              onChange={(event) =>
+                                updateReceivingRow(row.id, 'unitCostAfterTax', parseEditableNumberInput(event.target.value, { min: 0 }))
+                              }
+                              inputMode="decimal"
+                              disabled={rowLocked}
+                              className={editableNumberClass}
+                            />
+                          </div>
 
                           {showManufactureDate ? (
                             <div>
@@ -893,6 +976,7 @@ export default function UpdatePurchaseOrderStatus() {
                                 onChange={(value) => updateReceivingRow(row.id, 'manufactureDate', value)}
                                 placeholder="Select date"
                                 maxDate={today}
+                                disabled={rowLocked}
                               />
                             </div>
                           ) : null}
@@ -907,6 +991,7 @@ export default function UpdatePurchaseOrderStatus() {
                                 onChange={(value) => updateReceivingRow(row.id, 'expiryDate', value)}
                                 placeholder="Select date"
                                 minDate={today}
+                                disabled={rowLocked}
                               />
                             </div>
                           ) : null}
