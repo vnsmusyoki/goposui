@@ -36,7 +36,6 @@ type ReceivingRow = {
   lotNumber: string;
   currentStock: number;
   unitCostBeforeDiscount: number;
-  discountPercentage: number;
   unitCostBeforeTax: number;
   unitCostAfterTax: number;
 };
@@ -262,6 +261,17 @@ function formatEditableNumberInput(value: number) {
   return value === 0 ? '' : String(value);
 }
 
+function formatReceivedCountInput(value: number) {
+  return String(Math.max(0, Math.floor(Number.isFinite(value) ? value : 0)));
+}
+
+function joinHumanList(values: string[]) {
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values[values.length - 1]}`;
+}
+
 function getLocalDateStart(date = new Date()) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
@@ -301,7 +311,6 @@ function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
     const orderQuantity = Number(item.orderQuantity ?? 0);
     const balanceQuantity = Math.max(orderQuantity - alreadyReceivedQuantity, 0);
     const unitCostBeforeDiscount = Number(item.unitCostBeforeDiscount ?? 0);
-    const discountPercentage = Number(item.discountPercentage ?? 0);
     const unitCostBeforeTax = Number(item.unitCostBeforeTax ?? 0);
     const unitCostAfterTax = Number(item.netCost ?? unitCostBeforeTax);
 
@@ -319,7 +328,6 @@ function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
       lotNumber: item.lotNumber || '',
       currentStock: Number(item.currentStock ?? 0),
       unitCostBeforeDiscount,
-      discountPercentage,
       unitCostBeforeTax,
       unitCostAfterTax,
     };
@@ -346,22 +354,6 @@ function getStatusDefinition(statuses: PurchaseOrderStatusDefinition[], selected
   return statuses.find((entry) => entry.code === selectedStatus);
 }
 
-function getAllowedPurchaseOrderStatusTransitions(currentStatus: string) {
-  const status = currentStatus.trim().toLowerCase();
-  const allowed: Record<string, string[]> = {
-    draft: ['pending_approval', 'approved', 'cancelled'],
-    pending_approval: ['approved', 'cancelled'],
-    approved: ['ordered', 'cancelled'],
-    ordered: ['partially_received', 'received', 'cancelled'],
-    partially_received: ['received', 'cancelled'],
-    received: ['completed', 'closed', 'cancelled'],
-    completed: ['closed'],
-    cancelled: [],
-    closed: [],
-  };
-  return allowed[status] ?? [];
-}
-
 export default function UpdatePurchaseOrderStatus() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -377,7 +369,6 @@ export default function UpdatePurchaseOrderStatus() {
   const [approvalReminderChannels, setApprovalReminderChannels] = useState<ApprovalChannelState>(getDefaultApprovalChannelState());
   const [approvalReminderMessage, setApprovalReminderMessage] = useState('');
   const [approvalReminderReceiversText, setApprovalReminderReceiversText] = useState('');
-  const [statusChangeReason, setStatusChangeReason] = useState('');
   const [receivingRows, setReceivingRows] = useState<ReceivingRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -388,7 +379,10 @@ export default function UpdatePurchaseOrderStatus() {
   const detail = purchaseOrderDetail?.purchaseOrder;
   const currentStatus = detail?.status ?? '';
   const statusDefinition = useMemo(() => getStatusDefinition(purchaseOrderStatuses, selectedStatus), [purchaseOrderStatuses, selectedStatus]);
-  const allowedTransitions = useMemo(() => getAllowedPurchaseOrderStatusTransitions(currentStatus), [currentStatus]);
+  const currentStatusDefinition = useMemo(
+    () => getStatusDefinition(purchaseOrderStatuses, currentStatus),
+    [currentStatus, purchaseOrderStatuses],
+  );
   const approvalChannelsSelected = useMemo(
     () =>
       (Object.entries(approvalReminderChannels) as Array<[ApprovalChannel, boolean]>)
@@ -402,7 +396,12 @@ export default function UpdatePurchaseOrderStatus() {
   const showExpiryDate = Boolean(productSettings?.enableProductExpiry);
   const showLotNumber = Boolean(purchasesSettings?.enableLotNumber);
   const showReceivingGrid = Boolean(statusDefinition?.requiresReceivingItems);
-  const statusChanged = Boolean(detail?.status) && selectedStatus !== detail?.status;
+  const canMarkCompleted = useMemo(
+    () =>
+      receivingRows.length > 0 &&
+      receivingRows.every((row) => row.alreadyReceivedQuantity + row.receivedQuantity >= row.orderQuantity),
+    [receivingRows],
+  );
   const today = useMemo(() => getLocalDateStart(), []);
   const pageErrors = [formError, purchaseOrderDetailError, saveError].filter(Boolean) as string[];
 
@@ -412,7 +411,6 @@ export default function UpdatePurchaseOrderStatus() {
       .then((response) => {
         setSelectedStatus(response.purchaseOrder.status || '');
         setApprovalReminderMessage(`Please review and approve purchase order ${response.purchaseOrder.referenceNumber}.`);
-        setStatusChangeReason('');
         setReceivingRows(buildReceivingRows(response.items ?? []));
       })
       .catch(() => {
@@ -440,7 +438,7 @@ export default function UpdatePurchaseOrderStatus() {
       current.map((row) => {
         if (row.id !== id) return row;
         if (field === 'receivedQuantity') {
-          const nextQuantity = Math.max(Number(value) || 0, 0);
+          const nextQuantity = Math.max(Math.floor(Number(value) || 0), 0);
           return {
             ...row,
             receivedQuantity: Math.min(nextQuantity, row.balanceQuantity),
@@ -463,26 +461,11 @@ export default function UpdatePurchaseOrderStatus() {
             unitCostAfterTax: nextUnitCostAfterTax,
           };
         }
-        if (field === 'discountPercentage') {
-          const nextDiscountPercentage = Math.max(0, Math.min(100, Number(value) || 0));
-          const nextDiscountAmount = (row.unitCostBeforeDiscount * nextDiscountPercentage) / 100;
-          const nextUnitCostBeforeTax = Math.max(0, row.unitCostBeforeDiscount - nextDiscountAmount);
-          const nextUnitCostAfterTax = Math.max(nextUnitCostBeforeTax, row.unitCostAfterTax);
-          return {
-            ...row,
-            discountPercentage: nextDiscountPercentage,
-            unitCostBeforeTax: nextUnitCostBeforeTax,
-            unitCostAfterTax: nextUnitCostAfterTax,
-          };
-        }
         if (field === 'unitCostBeforeTax') {
           const nextUnitCostBeforeTax = Math.max(0, Number(value) || 0);
-          const nextDiscountAmount = Math.max(0, row.unitCostBeforeDiscount - nextUnitCostBeforeTax);
-          const nextDiscountPercentage = row.unitCostBeforeDiscount > 0 ? Math.min(100, (nextDiscountAmount / row.unitCostBeforeDiscount) * 100) : 0;
           const nextUnitCostAfterTax = Math.max(nextUnitCostBeforeTax, row.unitCostAfterTax);
           return {
             ...row,
-            discountPercentage: nextDiscountPercentage,
             unitCostBeforeTax: nextUnitCostBeforeTax,
             unitCostAfterTax: nextUnitCostAfterTax,
           };
@@ -518,14 +501,48 @@ export default function UpdatePurchaseOrderStatus() {
       }
     }
 
-    if (statusChanged && !statusChangeReason.trim()) {
-      return 'Please provide a reason for the status change.';
+    if (selectedStatus === 'completed' && !canMarkCompleted) {
+      const incompleteItems = receivingRows
+        .filter((row) => row.alreadyReceivedQuantity + row.receivedQuantity < row.orderQuantity)
+        .map((row) => row.productName);
+      const details = joinHumanList(incompleteItems);
+      return details
+        ? `Completed status is only allowed when all items are fully supplied. Still pending: ${details}.`
+        : 'Completed status is only allowed when all items are fully supplied.';
     }
 
     if (showReceivingGrid) {
-      const invalidRow = receivingRows.find((row) => row.receivedQuantity < 0 || row.receivedQuantity > row.balanceQuantity);
+      const invalidRow = receivingRows.find((row) => !Number.isFinite(row.receivedQuantity) || row.receivedQuantity < 0 || row.receivedQuantity > row.balanceQuantity);
       if (invalidRow) {
         return `Received quantity for ${invalidRow.productName} must be between 0 and the remaining balance.`;
+      }
+
+      const missingRequiredFieldRow = receivingRows.find((row) => {
+        if (row.receivedQuantity <= 0) {
+          return false;
+        }
+        if (!row.manufactureDate && showManufactureDate) {
+          return true;
+        }
+        if (!row.expiryDate && showExpiryDate) {
+          return true;
+        }
+        return false;
+      });
+
+      if (missingRequiredFieldRow) {
+        const missingFields: string[] = [];
+        if (showManufactureDate && !missingRequiredFieldRow.manufactureDate) {
+          missingFields.push('manufacture date');
+        }
+        if (showExpiryDate && !missingRequiredFieldRow.expiryDate) {
+          missingFields.push('expiry date');
+        }
+
+        const details = joinHumanList(missingFields);
+        return details
+          ? `${missingRequiredFieldRow.productName} is missing ${details}.`
+          : `Please provide all required stock details for ${missingRequiredFieldRow.productName}.`;
       }
 
       const invalidDateRow = receivingRows.find((row) => {
@@ -586,8 +603,6 @@ export default function UpdatePurchaseOrderStatus() {
           productId: detailItems.find((item) => item.id === row.id)?.productId ?? '',
           orderQuantity: Number(row.orderQuantity ?? 0),
           unitCostBeforeDiscount: Number(row.unitCostBeforeDiscount ?? 0),
-          discountPercentage: Number(row.discountPercentage ?? 0),
-          discountAmount: Number(getDiscountAmount(row)),
           unitCostBeforeTax: Number(row.unitCostBeforeTax ?? 0),
           productTaxRate: Number(
             row.unitCostAfterTax > row.unitCostBeforeTax && row.unitCostBeforeTax > 0
@@ -601,6 +616,12 @@ export default function UpdatePurchaseOrderStatus() {
           manufactureDate: row.manufactureDate || '',
           expiryDate: row.expiryDate || '',
           lotNumber: row.lotNumber || '',
+          discountPercentage: Number(
+            row.unitCostBeforeDiscount > 0
+              ? ((Math.max(row.unitCostBeforeDiscount - row.unitCostBeforeTax, 0) / row.unitCostBeforeDiscount) * 100)
+              : 0,
+          ),
+          discountAmount: Number(getDiscountAmount(row)),
           receivedQuantity: Math.min(row.alreadyReceivedQuantity + row.receivedQuantity, row.orderQuantity),
         })),
         additionalExpenses: (detail?.additionalExpenses ?? []).map((expense, index) => ({
@@ -620,10 +641,9 @@ export default function UpdatePurchaseOrderStatus() {
         approvalReminderChannels: selectedStatus === 'pending_approval' ? selectedChannels : undefined,
         approvalReminderMessage: selectedStatus === 'pending_approval' ? approvalReminderMessage : undefined,
         approvalReminderReceivers: selectedStatus === 'pending_approval' ? receiverList : undefined,
-        statusChangeReason: statusChanged ? statusChangeReason.trim() : undefined,
       });
       toast.success(response.message || 'Purchase order status updated successfully');
-      navigate('/purchases/order');
+      navigate('/purchases/orders');
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message || 'Failed to update purchase order status');
@@ -639,11 +659,11 @@ export default function UpdatePurchaseOrderStatus() {
         value: status.code,
         label: status.name,
         isDisabled:
-          Boolean(currentStatus) &&
+          Boolean(currentStatusDefinition) &&
           currentStatus !== status.code &&
-          !allowedTransitions.includes(status.code),
+          (status.sortOrder < (currentStatusDefinition?.sortOrder ?? 0) || (status.code === 'completed' && !canMarkCompleted)),
       })),
-    [allowedTransitions, currentStatus, purchaseOrderStatuses],
+    [canMarkCompleted, currentStatus, currentStatusDefinition, purchaseOrderStatuses],
   );
 
   const currentTotalLabel = `${detail?.itemsCount ?? 0} item${(detail?.itemsCount ?? 0) === 1 ? '' : 's'} · ${formatMoney(
@@ -713,6 +733,14 @@ export default function UpdatePurchaseOrderStatus() {
                     styles={purchaseOrderStatusSelectStyles()}
                     classNamePrefix="react-select"
                   />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    You can keep the current status or move forward in the workflow. Lower-ranked statuses are disabled.
+                  </p>
+                  {selectedStatus === 'completed' && !canMarkCompleted ? (
+                    <p className="mt-2 text-xs text-amber-600">
+                      Completed becomes available only after every item in this purchase order has been fully supplied.
+                    </p>
+                  ) : null}
 
                   {selectedStatus ? (
                     <div className="mt-3 border border-border bg-background p-3">
@@ -728,23 +756,6 @@ export default function UpdatePurchaseOrderStatus() {
                     </div>
                   ) : null}
 
-                  {statusChanged ? (
-                    <div className="mt-3 border border-border bg-background p-3">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">
-                        Reason for status change
-                      </label>
-                      <textarea
-                        value={statusChangeReason}
-                        onChange={(event) => setStatusChangeReason(event.target.value)}
-                        rows={3}
-                        className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
-                        placeholder="Explain why this purchase order status is changing..."
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        This reason is saved to purchase order logs together with the status change.
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
               </div>
 
@@ -870,8 +881,8 @@ export default function UpdatePurchaseOrderStatus() {
                                 type="number"
                                 min={0}
                                 max={row.balanceQuantity}
-                                step="0.01"
-                                value={formatEditableNumberInput(row.receivedQuantity)}
+                                step="1"
+                                value={formatReceivedCountInput(row.receivedQuantity)}
                                 onChange={(event) =>
                                   updateReceivingRow(
                                     row.id,
@@ -879,7 +890,7 @@ export default function UpdatePurchaseOrderStatus() {
                                     parseEditableNumberInput(event.target.value, { min: 0, max: row.balanceQuantity }),
                                   )
                                 }
-                              inputMode="decimal"
+                              inputMode="numeric"
                               disabled={rowLocked}
                               className={editableNumberClass}
                             />
@@ -899,29 +910,6 @@ export default function UpdatePurchaseOrderStatus() {
                                   row.id,
                                   'unitCostBeforeDiscount',
                                   parseEditableNumberInput(event.target.value, { min: 0 }),
-                                )
-                              }
-                              inputMode="decimal"
-                              disabled={rowLocked}
-                              className={editableNumberClass}
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Discount Percentage
-                            </label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step="0.01"
-                              value={formatEditableNumberInput(row.discountPercentage)}
-                              onChange={(event) =>
-                                updateReceivingRow(
-                                  row.id,
-                                  'discountPercentage',
-                                  parseEditableNumberInput(event.target.value, { min: 0, max: 100 }),
                                 )
                               }
                               inputMode="decimal"

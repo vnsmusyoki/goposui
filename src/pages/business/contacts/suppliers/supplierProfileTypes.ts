@@ -37,6 +37,23 @@ export type SupplierProfileData = {
   lastPaymentDate: string;
 };
 
+export type SupplierProfileStockReportItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  categoryName: string;
+  locationId: string;
+  locationName: string;
+  suppliedBySupplier: number;
+  soldAlreadyForSupplier: number;
+  quantityAvailable: number;
+  costPrice: number;
+  sellingPrice: number;
+  status: 'healthy' | 'low' | 'critical' | 'out-of-stock';
+  lastUpdated: string;
+};
+
 export type SupplierProfileTabKey =
   | 'ledger'
   | 'purchases'

@@ -50,6 +50,12 @@ import {
   RefreshCw,
   Bell,
   X,
+  RotateCcw,
+  ShoppingCart,
+  ArrowUpDown,
+  CalendarDays,
+  PieChart,
+  LineChart,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -57,15 +63,11 @@ import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocat
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
 import { useBusinessSuppliers } from '@/hooks/business/suppliers/useBusinessSuppliers';
 import {
-  usePurchaseOrders,
-  type PurchaseOrder,
-  type PurchaseOrderStatus,
-  type DeliveryStatus,
+  usePurchaseOrderReturns,
+  type PurchaseOrderReturn,
+  type PurchaseOrderReturnStatus,
   type PaymentStatus,
-  type PurchaseOrderNotificationMode,
-  type SendPurchaseOrderNotificationInput,
-} from '@/hooks/business/purchases/usePurchaseOrders';
-import { usePurchaseOrderStatuses } from '@/hooks/business/purchases/usePurchaseOrderStatuses';
+} from '@/hooks/business/purchases/usePurchaseOrderReturns';
 import { DateRangePicker } from '@/components/forms/DateRangePicker';
 import { ApiError, apiDownload } from '@/lib/api';
 
@@ -76,24 +78,22 @@ import { ApiError, apiDownload } from '@/lib/api';
 type FilterState = {
   locationId: string;
   supplierId: string;
-  status: PurchaseOrderStatus | 'all';
-  deliveryStatus: DeliveryStatus | 'all';
+  status: PurchaseOrderReturnStatus | 'all';
   paymentStatus: PaymentStatus | 'all';
   dateRange: { from: Date | null; to: Date | null };
   searchQuery: string;
 };
 
 type VisibleColumns = {
-  orderDate: boolean;
+  returnDate: boolean;
   referenceNumber: boolean;
+  parentPurchase: boolean;
   location: boolean;
   supplier: boolean;
   status: boolean;
-  items: boolean;
-  deliveryStatus: boolean;
   paymentStatus: boolean;
-  addedBy: boolean;
-  totalAmount: boolean;
+  grandTotal: boolean;
+  paymentDue: boolean;
 };
 
 type ExportColumnKey = keyof VisibleColumns;
@@ -107,103 +107,48 @@ type ActionMenuState = {
 type RowAction = 'view' | 'print' | 'download-pdf' | 'edit' | 'delete' | 'edit-delivery' | 'send-notification';
 
 type SelectOption = {
-  value: PurchaseOrderStatus;
+  value: PurchaseOrderReturnStatus;
   label: string;
 };
 
-type StatusEffect = {
-  status: PurchaseOrderStatus;
-  meaning: string;
-  stockUpdated: string;
-  supplierBilled: string;
-};
-
-type ApprovalChannel = 'notification' | 'sms' | 'whatsapp';
-
-type ApprovalChannelState = Record<ApprovalChannel, boolean>;
-
 type DeleteModalState = {
-  order: PurchaseOrder;
+  order: PurchaseOrderReturn;
 };
-
-type NotificationRecipientMode = PurchaseOrderNotificationMode;
-
-type NotificationFormState = {
-  mode: NotificationRecipientMode;
-  emailTo: string;
-  emailCc: string;
-  emailBcc: string;
-  emailSubject: string;
-  emailMessage: string;
-  smsWhatsappReceivers: string;
-  smsWhatsappMessage: string;
-};
-
-const ORDER_STATUS_EFFECTS: StatusEffect[] = [
-  { status: 'draft', meaning: 'Being prepared and can still be edited.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'pending', meaning: 'Waiting in the purchase order queue.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'pending_approval', meaning: 'Waiting for manager approval.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'approved', meaning: 'Approved internally and ready to send.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'sent', meaning: 'Sent to the supplier.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'ordered', meaning: 'Ordered from the supplier and awaiting fulfillment.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'partially_received', meaning: 'Some items have been received.', stockUpdated: 'Yes (partial)', supplierBilled: 'Usually No' },
-  { status: 'received', meaning: 'All ordered items have been received.', stockUpdated: 'Yes', supplierBilled: 'Usually No' },
-  { status: 'completed', meaning: 'Receipt, invoicing, and payment process finished.', stockUpdated: 'Yes', supplierBilled: 'Yes' },
-  { status: 'cancelled', meaning: 'Order cancelled before completion.', stockUpdated: 'No', supplierBilled: 'No' },
-  { status: 'closed', meaning: 'Locked for editing after everything is finalized.', stockUpdated: 'Yes', supplierBilled: 'Yes' },
-];
-
-const ORDER_STATUS_OPTIONS: SelectOption[] = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'pending_approval', label: 'Pending Approval' },
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'sent', label: 'Sent' },
-  { value: 'ordered', label: 'Ordered' },
-  { value: 'partially_received', label: 'Partially Received' },
-  { value: 'received', label: 'Received' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'closed', label: 'Closed' },
-];
 
 const DEFAULT_VISIBLE_COLUMNS: VisibleColumns = {
-  orderDate: true,
+  returnDate: true,
   referenceNumber: true,
+  parentPurchase: true,
   location: true,
   supplier: true,
   status: true,
-  items: true,
-  deliveryStatus: true,
   paymentStatus: true,
-  addedBy: true,
-  totalAmount: true,
+  grandTotal: true,
+  paymentDue: true,
 };
 
 const COLUMN_OPTIONS = [
-  { key: 'orderDate', label: 'Date' },
+  { key: 'returnDate', label: 'Return Date' },
   { key: 'referenceNumber', label: 'Reference No.' },
+  { key: 'parentPurchase', label: 'Parent Purchase' },
   { key: 'location', label: 'Location' },
   { key: 'supplier', label: 'Supplier' },
-  { key: 'status', label: 'Order Status' },
-  { key: 'items', label: 'Items' },
-  { key: 'deliveryStatus', label: 'Delivery Status' },
+  { key: 'status', label: 'Return Status' },
   { key: 'paymentStatus', label: 'Payment Status' },
-  { key: 'addedBy', label: 'Added By' },
-  { key: 'totalAmount', label: 'Total Amount' },
+  { key: 'grandTotal', label: 'Grand Total' },
+  { key: 'paymentDue', label: 'Payment Due' },
 ] as const;
 
 const EXPORT_COLUMN_ORDER: ExportColumnKey[] = [
-  'orderDate',
+  'returnDate',
   'referenceNumber',
+  'parentPurchase',
   'location',
   'supplier',
   'status',
-  'items',
-  'deliveryStatus',
   'paymentStatus',
-  'addedBy',
-  'totalAmount',
+  'grandTotal',
+  'paymentDue',
 ];
 
 const ROW_ACTIONS: Array<{ key: RowAction; label: string; destructive?: boolean }> = [
@@ -212,10 +157,7 @@ const ROW_ACTIONS: Array<{ key: RowAction; label: string; destructive?: boolean 
   { key: 'download-pdf', label: 'Download Pdf' },
   { key: 'edit', label: 'Edit' },
   { key: 'delete', label: 'Delete', destructive: true },
-  { key: 'edit-delivery', label: 'Edit Delivery' },
-  { key: 'send-notification', label: 'Send Notification' },
 ];
-
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -266,6 +208,12 @@ function getStatusColor(status: string): string {
     paid: 'bg-emerald-100 text-emerald-700 border-emerald-300',
     unpaid: 'bg-rose-100 text-rose-700 border-rose-300',
     partially_paid: 'bg-amber-100 text-amber-700 border-amber-300',
+    // Return specific statuses
+    returned: 'bg-purple-100 text-purple-700 border-purple-300',
+    partially_returned: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+    rejected: 'bg-red-100 text-red-700 border-red-300',
+    refunded: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    exchange: 'bg-blue-100 text-blue-700 border-blue-300',
   };
   return colors[status] || 'bg-gray-100 text-gray-700 border-gray-300';
 }
@@ -289,18 +237,29 @@ function getStatusLabel(status: string): string {
     paid: 'Paid',
     unpaid: 'Unpaid',
     partially_paid: 'Partially Paid',
+    // Return specific statuses
+    returned: 'Returned',
+    partially_returned: 'Partially Returned',
+    rejected: 'Rejected',
+    refunded: 'Refunded',
+    exchange: 'Exchange',
   };
   return labels[status] || status;
 }
 
-function buildStatusEffectMap() {
-  return ORDER_STATUS_EFFECTS.reduce((acc, effect) => {
-    acc[effect.status] = effect;
-    return acc;
-  }, {} as Partial<Record<PurchaseOrderStatus, StatusEffect>>);
+function getPaymentStatusColor(status: string): string {
+  const colors: Record<string, string> = {
+    paid: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    unpaid: 'bg-rose-100 text-rose-700 border-rose-300',
+    partially_paid: 'bg-amber-100 text-amber-700 border-amber-300',
+    refunded: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+    pending_refund: 'bg-orange-100 text-orange-700 border-orange-300',
+    credit_note: 'bg-blue-100 text-blue-700 border-blue-300',
+  };
+  return colors[status] || 'bg-gray-100 text-gray-700 border-gray-300';
 }
 
-function purchaseOrderStatusSelectStyles(): StylesConfig<SelectOption, false> {
+function purchaseOrderReturnSelectStyles(): StylesConfig<SelectOption, false> {
   return {
     control: (base, state) => ({
       ...base,
@@ -346,36 +305,6 @@ function purchaseOrderStatusSelectStyles(): StylesConfig<SelectOption, false> {
   };
 }
 
-function approvalChannelLabel(channel: ApprovalChannel) {
-  switch (channel) {
-    case 'sms':
-      return 'SMS';
-    case 'whatsapp':
-      return 'WhatsApp';
-    default:
-      return 'Notification';
-  }
-}
-
-function splitCommaSeparatedValues(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function isValidPhoneNumber(value: string) {
-  return /^0\d{9}$/.test(value.trim());
-}
-
-function isValidEmailAddress(value: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
-
-function normalizeTextList(value: string) {
-  return Array.from(new Set(splitCommaSeparatedValues(value)));
-}
-
 // --------------------------------------------------------------------------
 // Sub-components
 // --------------------------------------------------------------------------
@@ -383,6 +312,14 @@ function normalizeTextList(value: string) {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getStatusColor(status)}`}>
+      {getStatusLabel(status)}
+    </span>
+  );
+}
+
+function PaymentStatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getPaymentStatusColor(status)}`}>
       {getStatusLabel(status)}
     </span>
   );
@@ -527,25 +464,49 @@ function StatsCard({
   );
 }
 
+function ReturnStatusChart({ data }: { data: Record<string, number> }) {
+  const total = Object.values(data).reduce((sum, count) => sum + count, 0);
+  const colors = ['bg-primary', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-purple-500', 'bg-blue-500', 'bg-indigo-500'];
+
+  return (
+    <div className="space-y-3">
+      {Object.entries(data).map(([status, count], index) => {
+        const percentage = total > 0 ? (count / total) * 100 : 0;
+        return (
+          <div key={status} className="space-y-1">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{getStatusLabel(status)}</span>
+              <span className="font-medium text-foreground">{count} ({percentage.toFixed(1)}%)</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-muted/30 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${colors[index % colors.length]}`}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // --------------------------------------------------------------------------
 // Main Component
 // --------------------------------------------------------------------------
 
-export default function PurchaseOrders() {
+export default function PurchaseOrderReturns() {
   const navigate = useNavigate();
   const { settings: businessSettings } = useBusinessSettings();
   const { locations } = useBusinessLocations();
   const { suppliers } = useBusinessSuppliers();
-  const { statuses: purchaseOrderStatuses } = usePurchaseOrderStatuses();
   const {
-    purchaseOrders,
+    purchaseOrderReturns,
     loading,
     error,
-    fetchPurchaseOrders,
-    deletePurchaseOrder,
-    updatePurchaseOrder,
-    sendPurchaseOrderNotification,
-  } = usePurchaseOrders();
+    fetchPurchaseOrderReturns,
+    deletePurchaseOrderReturn,
+  } = usePurchaseOrderReturns();
 
   const [activeTab, setActiveTab] = useState<'analytics' | 'list'>('list');
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -555,7 +516,6 @@ export default function PurchaseOrders() {
     locationId: 'all',
     supplierId: 'all',
     status: 'all',
-    deliveryStatus: 'all',
     paymentStatus: 'all',
     dateRange: { from: null, to: null },
     searchQuery: '',
@@ -564,35 +524,20 @@ export default function PurchaseOrders() {
   const [visibleColumns, setVisibleColumns] = useState<VisibleColumns>(DEFAULT_VISIBLE_COLUMNS);
   const [actionMenuOpenFor, setActionMenuOpenFor] = useState<string | null>(null);
   const [actionMenuPosition, setActionMenuPosition] = useState<ActionMenuState>(null);
-  const [activeOrder, setActiveOrder] = useState<PurchaseOrder | null>(null);
+  const [activeReturn, setActiveReturn] = useState<PurchaseOrderReturn | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
-  const [deleteModalOrder, setDeleteModalOrder] = useState<PurchaseOrder | null>(null);
+  const [deleteModalReturn, setDeleteModalReturn] = useState<PurchaseOrderReturn | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
-  const [notificationModalOrder, setNotificationModalOrder] = useState<PurchaseOrder | null>(null);
-  const [notificationSaving, setNotificationSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [notificationForm, setNotificationForm] = useState<NotificationFormState>({
-    mode: 'email',
-    emailTo: '',
-    emailCc: '',
-    emailBcc: '',
-    emailSubject: '',
-    emailMessage: '',
-    smsWhatsappReceivers: '',
-    smsWhatsappMessage: '',
-  });
-  const statusDefinitionMap = useMemo(() => {
-    return new Map(purchaseOrderStatuses.map((status) => [status.code, status]));
-  }, [purchaseOrderStatuses]);
 
   const currencyCode = businessSettings?.currency || 'USD';
   const currencyPrecision = typeof businessSettings?.currencyPrecision === 'number' ? businessSettings.currencyPrecision : 2;
   const currencyPlacement = businessSettings?.currencySymbolPlacement === 'after' ? 'after' : 'before';
 
   useEffect(() => {
-    fetchPurchaseOrders();
-  }, [fetchPurchaseOrders]);
+    fetchPurchaseOrderReturns();
+  }, [fetchPurchaseOrderReturns]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -610,13 +555,13 @@ export default function PurchaseOrders() {
       }
       setActionMenuOpenFor(null);
       setActionMenuPosition(null);
-      setActiveOrder(null);
+      setActiveReturn(null);
     };
 
     const handleResizeOrScroll = () => {
       setActionMenuOpenFor(null);
       setActionMenuPosition(null);
-      setActiveOrder(null);
+      setActiveReturn(null);
     };
 
     document.addEventListener('mousedown', handleGlobalClose);
@@ -630,55 +575,52 @@ export default function PurchaseOrders() {
     };
   }, [actionMenuOpenFor]);
 
-  // Filtered orders
-  const filteredOrders = useMemo(() => {
-    let orders = purchaseOrders;
+  // Filtered returns
+  const filteredReturns = useMemo(() => {
+    let returns = purchaseOrderReturns;
 
     if (filters.locationId !== 'all') {
-      orders = orders.filter((order) => order.locationId === filters.locationId);
+      returns = returns.filter((returnOrder) => returnOrder.locationId === filters.locationId);
     }
 
     if (filters.supplierId !== 'all') {
-      orders = orders.filter((order) => order.supplierId === filters.supplierId);
+      returns = returns.filter((returnOrder) => returnOrder.supplierId === filters.supplierId);
     }
 
     if (filters.status !== 'all') {
-      orders = orders.filter((order) => order.status === filters.status);
-    }
-
-    if (filters.deliveryStatus !== 'all') {
-      orders = orders.filter((order) => order.deliveryStatus === filters.deliveryStatus);
+      returns = returns.filter((returnOrder) => returnOrder.status === filters.status);
     }
 
     if (filters.paymentStatus !== 'all') {
-      orders = orders.filter((order) => order.paymentStatus === filters.paymentStatus);
+      returns = returns.filter((returnOrder) => returnOrder.paymentStatus === filters.paymentStatus);
     }
 
     if (filters.dateRange.from) {
-      orders = orders.filter((order) => new Date(order.orderDate) >= filters.dateRange.from!);
+      returns = returns.filter((returnOrder) => new Date(returnOrder.returnDate) >= filters.dateRange.from!);
     }
     if (filters.dateRange.to) {
-      orders = orders.filter((order) => new Date(order.orderDate) <= filters.dateRange.to!);
+      returns = returns.filter((returnOrder) => new Date(returnOrder.returnDate) <= filters.dateRange.to!);
     }
 
     if (filters.searchQuery) {
       const query = filters.searchQuery.toLowerCase();
-      orders = orders.filter(
-        (order) =>
-          order.referenceNumber.toLowerCase().includes(query) ||
-          order.supplierName.toLowerCase().includes(query) ||
-          order.locationName.toLowerCase().includes(query)
+      returns = returns.filter(
+        (returnOrder) =>
+          returnOrder.referenceNumber.toLowerCase().includes(query) ||
+          returnOrder.supplierName.toLowerCase().includes(query) ||
+          returnOrder.locationName.toLowerCase().includes(query) ||
+          returnOrder.parentPurchaseReference.toLowerCase().includes(query)
       );
     }
 
-    return orders;
-  }, [purchaseOrders, filters]);
+    return returns;
+  }, [purchaseOrderReturns, filters]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / rowsPerPage));
-  const displayedOrders = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(filteredReturns.length / rowsPerPage));
+  const displayedReturns = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return filteredOrders.slice(start, start + rowsPerPage);
-  }, [currentPage, filteredOrders, rowsPerPage]);
+    return filteredReturns.slice(start, start + rowsPerPage);
+  }, [currentPage, filteredReturns, rowsPerPage]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -688,71 +630,74 @@ export default function PurchaseOrders() {
 
   // Analytics data
   const analytics = useMemo(() => {
-    const totalOrders = purchaseOrders.length;
-    const totalValue = purchaseOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-    const receivedOrders = purchaseOrders.filter((o) => o.status === 'received' || o.status === 'completed' || o.status === 'closed');
-    const pendingOrders = purchaseOrders.filter((o) => o.status === 'pending' || o.status === 'pending_approval' || o.status === 'approved');
-    const cancelledOrders = purchaseOrders.filter((o) => o.status === 'cancelled');
-    const averageOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
+    const totalReturns = purchaseOrderReturns.length;
+    const totalValue = purchaseOrderReturns.reduce((sum, returnOrder) => sum + returnOrder.grandTotal, 0);
+    const totalPaymentDue = purchaseOrderReturns.reduce((sum, returnOrder) => sum + returnOrder.paymentDue, 0);
+    const completedReturns = purchaseOrderReturns.filter((o) => o.status === 'completed' || o.status === 'refunded');
+    const pendingReturns = purchaseOrderReturns.filter((o) => o.status === 'pending' || o.status === 'pending_approval');
+    const cancelledReturns = purchaseOrderReturns.filter((o) => o.status === 'cancelled' || o.status === 'rejected');
+    const averageReturnValue = totalReturns > 0 ? totalValue / totalReturns : 0;
 
     // Monthly trend
-    const monthlyData = purchaseOrders.reduce((acc, order) => {
-      const month = format(new Date(order.orderDate), 'MMM yyyy');
-      if (!acc[month]) acc[month] = { count: 0, value: 0 };
+    const monthlyData = purchaseOrderReturns.reduce((acc, returnOrder) => {
+      const month = format(new Date(returnOrder.returnDate), 'MMM yyyy');
+      if (!acc[month]) acc[month] = { count: 0, value: 0, paymentDue: 0 };
       acc[month].count++;
-      acc[month].value += order.totalAmount;
+      acc[month].value += returnOrder.grandTotal;
+      acc[month].paymentDue += returnOrder.paymentDue;
       return acc;
-    }, {} as Record<string, { count: number; value: number }>);
+    }, {} as Record<string, { count: number; value: number; paymentDue: number }>);
 
     // Status distribution
-    const statusDistribution = purchaseOrders.reduce((acc, order) => {
-      acc[order.status] = (acc[order.status] || 0) + 1;
+    const statusDistribution = purchaseOrderReturns.reduce((acc, returnOrder) => {
+      acc[returnOrder.status] = (acc[returnOrder.status] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    // Supplier performance
-    const supplierPerformance = purchaseOrders.reduce((acc, order) => {
-      if (!acc[order.supplierName]) {
-        acc[order.supplierName] = { count: 0, value: 0, received: 0 };
+    // Payment status breakdown
+    const paymentBreakdown = purchaseOrderReturns.reduce((acc, returnOrder) => {
+      acc[returnOrder.paymentStatus] = (acc[returnOrder.paymentStatus] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Supplier return performance
+    const supplierPerformance = purchaseOrderReturns.reduce((acc, returnOrder) => {
+      if (!acc[returnOrder.supplierName]) {
+        acc[returnOrder.supplierName] = { count: 0, value: 0, refunded: 0 };
       }
-      acc[order.supplierName].count++;
-      acc[order.supplierName].value += order.totalAmount;
-      if (order.status === 'received' || order.status === 'completed' || order.status === 'closed') {
-        acc[order.supplierName].received++;
+      acc[returnOrder.supplierName].count++;
+      acc[returnOrder.supplierName].value += returnOrder.grandTotal;
+      if (returnOrder.status === 'refunded' || returnOrder.status === 'completed') {
+        acc[returnOrder.supplierName].refunded++;
       }
       return acc;
-    }, {} as Record<string, { count: number; value: number; received: number }>);
+    }, {} as Record<string, { count: number; value: number; refunded: number }>);
 
-    // Payment status breakdown
-    const paymentBreakdown = purchaseOrders.reduce((acc, order) => {
-      acc[order.paymentStatus] = (acc[order.paymentStatus] || 0) + 1;
+    // Reason distribution (if available)
+    const reasonDistribution = purchaseOrderReturns.reduce((acc, returnOrder) => {
+      const reason = returnOrder.returnReason || 'Other';
+      acc[reason] = (acc[reason] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
     return {
-      totalOrders,
+      totalReturns,
       totalValue,
-      receivedOrders: receivedOrders.length,
-      pendingOrders: pendingOrders.length,
-      cancelledOrders: cancelledOrders.length,
-      averageOrderValue,
+      totalPaymentDue,
+      completedReturns: completedReturns.length,
+      pendingReturns: pendingReturns.length,
+      cancelledReturns: cancelledReturns.length,
+      averageReturnValue,
       monthlyData,
       statusDistribution,
-      supplierPerformance,
       paymentBreakdown,
+      supplierPerformance,
+      reasonDistribution,
     };
-  }, [purchaseOrders]);
+  }, [purchaseOrderReturns]);
 
   const handleDelete = async () => {
-    if (!deleteModalOrder) {
-      return;
-    }
-
-    const statusDefinition = statusDefinitionMap.get(deleteModalOrder.status);
-    if (statusDefinition && !statusDefinition.canBeDeleted) {
-      const message = `Orders in "${statusDefinition.name}" cannot be deleted.`;
-      setDeleteModalError(message);
-      toast.error(message);
+    if (!deleteModalReturn) {
       return;
     }
 
@@ -760,11 +705,11 @@ export default function PurchaseOrders() {
     setDeleteModalError(null);
 
     try {
-      const response = await deletePurchaseOrder(deleteModalOrder.id);
-      toast.success(response.message || 'Purchase order deleted successfully');
-      setDeleteModalOrder(null);
+      const response = await deletePurchaseOrderReturn(deleteModalReturn.id);
+      toast.success(response.message || 'Purchase return deleted successfully');
+      setDeleteModalReturn(null);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to delete purchase order';
+      const message = err instanceof ApiError ? err.message : 'Failed to delete purchase return';
       setDeleteModalError(message);
       toast.error(message);
     } finally {
@@ -772,123 +717,14 @@ export default function PurchaseOrders() {
     }
   };
 
-  const openDeleteModal = (order: PurchaseOrder) => {
-    const statusDefinition = statusDefinitionMap.get(order.status);
-    if (statusDefinition && !statusDefinition.canBeDeleted) {
-      const message = `Orders in "${statusDefinition.name}" cannot be deleted.`;
-      setDeleteModalError(message);
-      toast.error(message);
-      return;
-    }
-
+  const openDeleteModal = (returnOrder: PurchaseOrderReturn) => {
     setDeleteModalError(null);
-    setDeleteModalOrder(order);
-  };
-
-  const openNotificationModal = (order: PurchaseOrder) => {
-    setActionError(null);
-    setNotificationModalOrder(order);
-    setNotificationForm({
-      mode: 'email',
-      emailTo: '',
-      emailCc: '',
-      emailBcc: '',
-      emailSubject: `Purchase Order ${order.referenceNumber}`,
-      emailMessage: '',
-      smsWhatsappReceivers: '',
-      smsWhatsappMessage: '',
-    });
+    setDeleteModalReturn(returnOrder);
   };
 
   const closeDeleteModal = () => {
-    setDeleteModalOrder(null);
+    setDeleteModalReturn(null);
     setDeleteModalError(null);
-  };
-  const closeNotificationModal = () => {
-    setNotificationModalOrder(null);
-    setActionError(null);
-  };
-
-  const handleSendNotification = async () => {
-    if (!notificationModalOrder) {
-      return;
-    }
-
-    const nextMode = notificationForm.mode;
-    const emailTo = normalizeTextList(notificationForm.emailTo);
-    const emailCc = normalizeTextList(notificationForm.emailCc);
-    const emailBcc = normalizeTextList(notificationForm.emailBcc);
-    const smsWhatsappReceivers = normalizeTextList(notificationForm.smsWhatsappReceivers);
-    const emailMessage = notificationForm.emailMessage.trim();
-    const smsWhatsappMessage = notificationForm.smsWhatsappMessage.trim();
-    const payload: SendPurchaseOrderNotificationInput = {
-      mode: nextMode,
-      emailTo,
-      emailCc,
-      emailBcc,
-      emailSubject: notificationForm.emailSubject,
-      emailMessage,
-      smsWhatsappReceivers,
-      smsWhatsappMessage,
-      note: `Purchase order notification for ${notificationModalOrder.referenceNumber}`,
-    };
-
-    if (nextMode === 'email') {
-      const invalidEmails = emailTo.filter((item) => !isValidEmailAddress(item));
-      if (emailTo.length === 0 || invalidEmails.length > 0) {
-        const message = 'Enter at least one valid email address for To.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-      if (emailCc.some((item) => !isValidEmailAddress(item))) {
-        const message = 'CC contains an invalid email address.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-      if (emailBcc.some((item) => !isValidEmailAddress(item))) {
-        const message = 'BCC contains an invalid email address.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-      if (!emailMessage) {
-        const message = 'Please type the email message.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-    } else {
-      const invalidPhones = smsWhatsappReceivers.filter((item) => !isValidPhoneNumber(item));
-      if (smsWhatsappReceivers.length === 0 || invalidPhones.length > 0) {
-        const message = 'Enter at least one valid phone number starting with 0 and 10 digits long.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-      if (!smsWhatsappMessage) {
-        const message = 'Please type the SMS/WhatsApp message.';
-        setActionError(message);
-        toast.error(message);
-        return;
-      }
-    }
-
-    setNotificationSaving(true);
-    setActionError(null);
-
-    try {
-      const response = await sendPurchaseOrderNotification(notificationModalOrder.id, payload);
-      toast.success(response.message || 'Notification queued successfully');
-      setNotificationModalOrder(null);
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to send notification';
-      setActionError(message);
-      toast.error(message);
-    } finally {
-      setNotificationSaving(false);
-    }
   };
 
   const handleResetColumns = () => {
@@ -903,7 +739,6 @@ export default function PurchaseOrders() {
     if (filters.locationId !== 'all') params.set('locationId', filters.locationId);
     if (filters.supplierId !== 'all') params.set('supplierId', filters.supplierId);
     if (filters.status !== 'all') params.set('status', filters.status);
-    if (filters.deliveryStatus !== 'all') params.set('deliveryStatus', filters.deliveryStatus);
     if (filters.paymentStatus !== 'all') params.set('paymentStatus', filters.paymentStatus);
     if (filters.searchQuery.trim()) params.set('searchQuery', filters.searchQuery.trim());
     if (filters.dateRange.from) params.set('from', format(filters.dateRange.from, 'yyyy-MM-dd'));
@@ -926,26 +761,26 @@ export default function PurchaseOrders() {
     URL.revokeObjectURL(url);
   };
 
-  const downloadPurchaseOrdersExport = async (formatType: 'csv' | 'pdf') => {
+  const downloadPurchaseReturnsExport = async (formatType: 'csv' | 'pdf') => {
     try {
       const query = buildExportQuery();
-      const { blob, filename } = await apiDownload(`/purchases/orders/export/${formatType}${query ? `?${query}` : ''}`);
-      downloadBlob(blob, filename ?? `purchase-orders.${formatType}`);
+      const { blob, filename } = await apiDownload(`/purchases/returns/export/${formatType}${query ? `?${query}` : ''}`);
+      downloadBlob(blob, filename ?? `purchase-returns.${formatType}`);
       toast.success(`${formatType.toUpperCase()} export downloaded successfully`);
     } catch (err) {
       if (err instanceof ApiError) {
-        toast.error(err.message || `Failed to export purchase orders`);
+        toast.error(err.message || `Failed to export purchase returns`);
       } else {
-        toast.error(`Failed to export purchase orders`);
+        toast.error(`Failed to export purchase returns`);
       }
     }
   };
 
-  const downloadPurchaseOrderPdf = async (order: PurchaseOrder, shouldPrint = false) => {
+  const downloadPurchaseReturnPdf = async (returnOrder: PurchaseOrderReturn, shouldPrint = false) => {
     try {
-      const { blob } = await apiDownload(`/purchases/orders/${order.id}/export/pdf`);
+      const { blob } = await apiDownload(`/purchases/returns/${returnOrder.id}/export/pdf`);
       if (!shouldPrint) {
-        downloadBlob(blob, `${order.referenceNumber || order.id}.pdf`);
+        downloadBlob(blob, `${returnOrder.referenceNumber || returnOrder.id}.pdf`);
         toast.success('PDF downloaded successfully');
         return;
       }
@@ -953,7 +788,7 @@ export default function PurchaseOrders() {
       const url = URL.createObjectURL(blob);
       const viewer = window.open(url, '_blank', 'noopener,noreferrer');
       if (!viewer) {
-        downloadBlob(blob, `${order.referenceNumber || order.id}.pdf`);
+        downloadBlob(blob, `${returnOrder.referenceNumber || returnOrder.id}.pdf`);
         return;
       }
       if (shouldPrint) {
@@ -969,9 +804,9 @@ export default function PurchaseOrders() {
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       if (err instanceof ApiError) {
-        toast.error(err.message || 'Failed to export purchase order');
+        toast.error(err.message || 'Failed to export purchase return');
       } else {
-        toast.error('Failed to export purchase order');
+        toast.error('Failed to export purchase return');
       }
     }
   };
@@ -986,7 +821,7 @@ export default function PurchaseOrders() {
     label: sup.name,
   }));
 
-  const statusOptions: Array<{ value: PurchaseOrderStatus | 'all'; label: string }> = [
+  const statusOptions: Array<{ value: PurchaseOrderReturnStatus | 'all'; label: string }> = [
     { value: 'all', label: 'All Statuses' },
     { value: 'draft', label: 'Draft' },
     { value: 'pending_approval', label: 'Pending Approval' },
@@ -999,13 +834,11 @@ export default function PurchaseOrders() {
     { value: 'closed', label: 'Closed' },
     { value: 'cancelled', label: 'Cancelled' },
     { value: 'completed', label: 'Completed' },
-  ];
-
-  const deliveryStatusOptions: Array<{ value: DeliveryStatus | 'all'; label: string }> = [
-    { value: 'all', label: 'All Delivery Statuses' },
-    { value: 'pending_delivery', label: 'Pending Delivery' },
-    { value: 'in_transit', label: 'In Transit' },
-    { value: 'delivered', label: 'Delivered' },
+    { value: 'returned', label: 'Returned' },
+    { value: 'partially_returned', label: 'Partially Returned' },
+    { value: 'rejected', label: 'Rejected' },
+    { value: 'refunded', label: 'Refunded' },
+    { value: 'exchange', label: 'Exchange' },
   ];
 
   const paymentStatusOptions: Array<{ value: PaymentStatus | 'all'; label: string }> = [
@@ -1013,11 +846,14 @@ export default function PurchaseOrders() {
     { value: 'unpaid', label: 'Unpaid' },
     { value: 'partially_paid', label: 'Partially Paid' },
     { value: 'paid', label: 'Paid' },
+    { value: 'refunded', label: 'Refunded' },
+    { value: 'pending_refund', label: 'Pending Refund' },
+    { value: 'credit_note', label: 'Credit Note' },
   ];
 
-  const openActionMenu = (order: PurchaseOrder, button: HTMLButtonElement) => {
+  const openActionMenu = (returnOrder: PurchaseOrderReturn, button: HTMLButtonElement) => {
     const rect = button.getBoundingClientRect();
-    const menuHeight = 336;
+    const menuHeight = 280;
     const menuWidth = 256;
     const gap = 8;
     const spaceBelow = window.innerHeight - rect.bottom;
@@ -1026,41 +862,35 @@ export default function PurchaseOrders() {
     const top = placement === 'bottom' ? rect.bottom + gap : Math.max(rect.top - menuHeight - gap, gap);
     const left = Math.min(Math.max(rect.right - menuWidth, gap), window.innerWidth - menuWidth - gap);
 
-    setActiveOrder(order);
+    setActiveReturn(returnOrder);
     setActionMenuPosition({ top, left, placement });
-    setActionMenuOpenFor(order.id);
+    setActionMenuOpenFor(returnOrder.id);
   };
 
   const closeActionMenu = () => {
     setActionMenuOpenFor(null);
     setActionMenuPosition(null);
-    setActiveOrder(null);
+    setActiveReturn(null);
   };
 
-  const handleOrderAction = async (action: RowAction, order: PurchaseOrder) => {
+  const handleReturnAction = async (action: RowAction, returnOrder: PurchaseOrderReturn) => {
     closeActionMenu();
 
     switch (action) {
       case 'view':
-        navigate(`/purchases/orders/${order.id}/view`);
+        navigate(`/purchases/returns/${returnOrder.id}/view`);
         return;
       case 'print':
-        await downloadPurchaseOrderPdf(order, true);
+        await downloadPurchaseReturnPdf(returnOrder, true);
         return;
       case 'download-pdf':
-        await downloadPurchaseOrderPdf(order, false);
+        await downloadPurchaseReturnPdf(returnOrder, false);
         return;
       case 'edit':
-        navigate(`/purchases/orders/${order.id}/edit`);
+        navigate(`/purchases/returns/${returnOrder.id}/edit`);
         return;
       case 'delete':
-        openDeleteModal(order);
-        return;
-      case 'edit-delivery':
-        navigate(`/purchases/orders/${order.id}/update-status`);
-        return;
-      case 'send-notification':
-        openNotificationModal(order);
+        openDeleteModal(returnOrder);
         return;
       default:
         return;
@@ -1072,7 +902,7 @@ export default function PurchaseOrders() {
   return (
     <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="sticky top-0 z-20 border-b border-border bg-background/95  py-4 backdrop-blur ">
+      <div className="sticky top-0 z-20 border-b border-border bg-background/95 py-4 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 sm:gap-4">
             <button
@@ -1084,20 +914,20 @@ export default function PurchaseOrders() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Purchase Orders</h1>
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Purchase Returns</h1>
               <p className="mt-0.5 text-sm text-muted-foreground hidden sm:block">
-                Manage all your purchase orders in one place
+                Manage all purchase returns in one place
               </p>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => navigate('/purchases/orders/create')}
+              onClick={() => navigate('/purchases/returns/create')}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
-              New Order
+              New Return
             </button>
           </div>
         </div>
@@ -1114,7 +944,7 @@ export default function PurchaseOrders() {
             {error ? (
               <button
                 type="button"
-                onClick={() => fetchPurchaseOrders()}
+                onClick={() => fetchPurchaseOrderReturns()}
                 className="rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10"
               >
                 Retry
@@ -1145,7 +975,6 @@ export default function PurchaseOrders() {
                     locationId: 'all',
                     supplierId: 'all',
                     status: 'all',
-                    deliveryStatus: 'all',
                     paymentStatus: 'all',
                     dateRange: { from: null, to: null },
                     searchQuery: '',
@@ -1157,7 +986,7 @@ export default function PurchaseOrders() {
               </button>
               <button
                 type="button"
-                onClick={() => fetchPurchaseOrders()}
+                onClick={() => fetchPurchaseOrderReturns()}
                 className="rounded-lg p-2 hover:bg-surface-alt"
                 aria-label="Refresh"
               >
@@ -1175,12 +1004,12 @@ export default function PurchaseOrders() {
                   type="text"
                   value={filters.searchQuery}
                   onChange={(e) => setFilters({ ...filters, searchQuery: e.target.value })}
-                  placeholder="Search by reference, supplier, or location..."
+                  placeholder="Search by reference, supplier, location, or parent purchase..."
                   className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-4 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <FilterSelect
                   label="Business Location"
                   value={filters.locationId}
@@ -1200,21 +1029,12 @@ export default function PurchaseOrders() {
                 />
 
                 <FilterSelect
-                  label="Order Status"
+                  label="Return Status"
                   value={filters.status}
-                  onChange={(value) => setFilters({ ...filters, status: value as PurchaseOrderStatus | 'all' })}
+                  onChange={(value) => setFilters({ ...filters, status: value as PurchaseOrderReturnStatus | 'all' })}
                   options={statusOptions}
                   placeholder="All Statuses"
-                  icon={FileText}
-                />
-
-                <FilterSelect
-                  label="Delivery Status"
-                  value={filters.deliveryStatus}
-                  onChange={(value) => setFilters({ ...filters, deliveryStatus: value as DeliveryStatus | 'all' })}
-                  options={deliveryStatusOptions}
-                  placeholder="All Delivery Statuses"
-                  icon={Truck}
+                  icon={RotateCcw}
                 />
 
                 <FilterSelect
@@ -1241,8 +1061,8 @@ export default function PurchaseOrders() {
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-4">
                 <p className="text-sm text-muted-foreground">
-                  Showing <span className="font-medium text-foreground">{filteredOrders.length}</span> of{' '}
-                  <span className="font-medium text-foreground">{purchaseOrders.length}</span> orders
+                  Showing <span className="font-medium text-foreground">{filteredReturns.length}</span> of{' '}
+                  <span className="font-medium text-foreground">{purchaseOrderReturns.length}</span> returns
                 </p>
               </div>
             </div>
@@ -1273,8 +1093,8 @@ export default function PurchaseOrders() {
             }`}
           >
             <Receipt className="h-4 w-4" />
-            All Orders
-            <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">{filteredOrders.length}</span>
+            All Returns
+            <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">{filteredReturns.length}</span>
           </button>
         </div>
       </div>
@@ -1286,40 +1106,38 @@ export default function PurchaseOrders() {
             {/* Stats Row */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
               <StatsCard
-                title="Total Orders"
-                value={analytics.totalOrders}
-                icon={FileText}
+                title="Total Returns"
+                value={analytics.totalReturns}
+                icon={RotateCcw}
                 color="primary"
-                change={{ value: 12, positive: true }}
               />
               <StatsCard
-                title="Total Value"
+                title="Total Return Value"
                 value={formatMoney(analytics.totalValue, currencyCode, currencyPrecision, currencyPlacement)}
                 icon={DollarSign}
                 color="emerald"
-                change={{ value: 8, positive: true }}
               />
               <StatsCard
-                title="Received"
-                value={analytics.receivedOrders}
+                title="Total Payment Due"
+                value={formatMoney(analytics.totalPaymentDue, currencyCode, currencyPrecision, currencyPlacement)}
+                icon={CreditCard}
+                color="amber"
+              />
+              <StatsCard
+                title="Completed"
+                value={analytics.completedReturns}
                 icon={CheckCircle}
                 color="emerald"
               />
               <StatsCard
                 title="Pending"
-                value={analytics.pendingOrders}
+                value={analytics.pendingReturns}
                 icon={Clock}
                 color="amber"
               />
               <StatsCard
-                title="Cancelled"
-                value={analytics.cancelledOrders}
-                icon={XCircle}
-                color="rose"
-              />
-              <StatsCard
-                title="Avg Order Value"
-                value={formatMoney(analytics.averageOrderValue, currencyCode, currencyPrecision, currencyPlacement)}
+                title="Avg Return Value"
+                value={formatMoney(analytics.averageReturnValue, currencyCode, currencyPrecision, currencyPlacement)}
                 icon={TrendingUp}
                 color="purple"
               />
@@ -1329,13 +1147,13 @@ export default function PurchaseOrders() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {/* Monthly Trend Chart */}
               <div className="rounded-xl border border-border bg-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">Monthly Order Trend</h3>
+                <h3 className="mb-4 text-sm font-semibold text-foreground">Monthly Return Trend</h3>
                 <div className="space-y-3">
                   {Object.entries(analytics.monthlyData).map(([month, data]) => (
                     <div key={month} className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">{month}</span>
-                        <span className="font-medium text-foreground">{data.count} orders</span>
+                        <span className="font-medium text-foreground">{data.count} returns</span>
                       </div>
                       <div className="relative h-8 w-full rounded-lg bg-muted/30 overflow-hidden">
                         <div
@@ -1355,6 +1173,12 @@ export default function PurchaseOrders() {
                           {formatMoney(data.value, currencyCode, currencyPrecision, currencyPlacement)}
                         </span>
                       </div>
+                      {data.paymentDue > 0 && (
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Payment Due:</span>
+                          <span>{formatMoney(data.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1362,38 +1186,23 @@ export default function PurchaseOrders() {
 
               {/* Status Distribution */}
               <div className="rounded-xl border border-border bg-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">Order Status Distribution</h3>
-                <div className="space-y-3">
-                  {Object.entries(analytics.statusDistribution).map(([status, count]) => {
-                    const percentage = (count / analytics.totalOrders) * 100;
-                    return (
-                      <div key={status} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">{getStatusLabel(status)}</span>
-                          <span className="font-medium text-foreground">{count} ({percentage.toFixed(1)}%)</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-muted/30 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${getStatusColor(status).split(' ')[0]}`}
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <h3 className="mb-4 text-sm font-semibold text-foreground">Return Status Distribution</h3>
+                <ReturnStatusChart data={analytics.statusDistribution} />
               </div>
 
               {/* Payment Status Breakdown */}
-              <div className="rounded-sm border border-border bg-card p-5">
+              <div className="rounded-xl border border-border bg-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-foreground">Payment Status Breakdown</h3>
                 <div className="grid grid-cols-3 gap-4">
                   {Object.entries(analytics.paymentBreakdown).map(([status, count]) => {
-                    const percentage = (count / analytics.totalOrders) * 100;
+                    const percentage = analytics.totalReturns > 0 ? (count / analytics.totalReturns) * 100 : 0;
                     const colors = {
                       paid: 'bg-emerald-500',
                       unpaid: 'bg-rose-500',
                       partially_paid: 'bg-amber-500',
+                      refunded: 'bg-emerald-500',
+                      pending_refund: 'bg-orange-500',
+                      credit_note: 'bg-blue-500',
                     };
                     return (
                       <div key={status} className="rounded-lg border border-border p-3 text-center">
@@ -1408,20 +1217,20 @@ export default function PurchaseOrders() {
               </div>
 
               {/* Supplier Performance */}
-              <div className="rounded-sm border border-border bg-card p-5">
-                <h3 className="mb-4 text-sm font-semibold text-foreground">Top Suppliers</h3>
+              <div className="rounded-xl border border-border bg-card p-5">
+                <h3 className="mb-4 text-sm font-semibold text-foreground">Top Suppliers by Returns</h3>
                 <div className="space-y-4">
                   {Object.entries(analytics.supplierPerformance)
                     .sort((a, b) => b[1].value - a[1].value)
                     .slice(0, 5)
                     .map(([name, data]) => {
-                      const deliveryRate = data.count > 0 ? (data.received / data.count) * 100 : 0;
+                      const refundRate = data.count > 0 ? (data.refunded / data.count) * 100 : 0;
                       return (
                         <div key={name} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0">
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-foreground">{name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {data.count} orders • Delivery rate: {deliveryRate.toFixed(1)}%
+                              {data.count} returns • Refund rate: {refundRate.toFixed(1)}%
                             </p>
                           </div>
                           <div className="text-right">
@@ -1433,17 +1242,46 @@ export default function PurchaseOrders() {
                       );
                     })}
                   {Object.keys(analytics.supplierPerformance).length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-8">No supplier data available</p>
+                    <p className="text-sm text-muted-foreground text-center py-8">No supplier return data available</p>
                   )}
                 </div>
               </div>
+
+              {/* Return Reasons (if available) */}
+              {Object.keys(analytics.reasonDistribution).length > 0 && (
+                <div className="rounded-xl border border-border bg-card p-5">
+                  <h3 className="mb-4 text-sm font-semibold text-foreground">Return Reasons</h3>
+                  <div className="space-y-3">
+                    {Object.entries(analytics.reasonDistribution)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([reason, count]) => {
+                        const percentage = analytics.totalReturns > 0 ? (count / analytics.totalReturns) * 100 : 0;
+                        return (
+                          <div key={reason} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">{reason}</span>
+                              <span className="font-medium text-foreground">{count} ({percentage.toFixed(1)}%)</span>
+                            </div>
+                            <div className="h-2 w-full rounded-full bg-muted/30 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-primary/60 transition-all"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">All Orders</p>
+                <p className="text-sm font-semibold text-foreground">All Returns</p>
                 <p className="text-xs text-muted-foreground">Choose which columns are visible, then export from the backend.</p>
               </div>
               <div className="relative">
@@ -1548,7 +1386,7 @@ export default function PurchaseOrders() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => downloadPurchaseOrdersExport('csv')}
+                  onClick={() => downloadPurchaseReturnsExport('csv')}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
                 >
                   <Download className="h-3.5 w-3.5" />
@@ -1556,7 +1394,7 @@ export default function PurchaseOrders() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => downloadPurchaseOrdersExport('pdf')}
+                  onClick={() => downloadPurchaseReturnsExport('pdf')}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
                 >
                   <FileText className="h-3.5 w-3.5" />
@@ -1570,25 +1408,25 @@ export default function PurchaseOrders() {
                 <div className="flex h-64 items-center justify-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    <p className="text-sm text-muted-foreground">Loading purchase orders...</p>
+                    <p className="text-sm text-muted-foreground">Loading purchase returns...</p>
                   </div>
                 </div>
-              ) : filteredOrders.length === 0 ? (
+              ) : filteredReturns.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16">
-                  <Receipt className="h-12 w-12 text-muted-foreground" />
-                  <h3 className="mt-4 text-sm font-medium text-foreground">No purchase orders found</h3>
+                  <RotateCcw className="h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-sm font-medium text-foreground">No purchase returns found</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {purchaseOrders.length === 0
-                      ? 'Get started by creating your first purchase order'
+                    {purchaseOrderReturns.length === 0
+                      ? 'Get started by creating your first purchase return'
                       : 'Try adjusting your filters'}
                   </p>
-                  {purchaseOrders.length === 0 && (
+                  {purchaseOrderReturns.length === 0 && (
                     <button
-                      onClick={() => navigate('/purchases/orders/create')}
+                      onClick={() => navigate('/purchases/returns/create')}
                       className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                     >
                       <Plus className="mr-2 inline h-4 w-4" />
-                      Create Purchase Order
+                      Create Purchase Return
                     </button>
                   )}
                 </div>
@@ -1598,14 +1436,19 @@ export default function PurchaseOrders() {
                     <table className="min-w-full divide-y divide-border">
                       <thead className="bg-muted/30">
                         <tr>
-                          {visibleColumns.orderDate && (
+                          {visibleColumns.returnDate && (
                             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Date
+                              Return Date
                             </th>
                           )}
                           {visibleColumns.referenceNumber && (
                             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                               Reference No.
+                            </th>
+                          )}
+                          {visibleColumns.parentPurchase && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Parent Purchase
                             </th>
                           )}
                           {visibleColumns.location && (
@@ -1620,17 +1463,7 @@ export default function PurchaseOrders() {
                           )}
                           {visibleColumns.status && (
                             <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Order Status
-                            </th>
-                          )}
-                          {visibleColumns.items && (
-                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Items
-                            </th>
-                          )}
-                          {visibleColumns.deliveryStatus && (
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Delivery Status
+                              Return Status
                             </th>
                           )}
                           {visibleColumns.paymentStatus && (
@@ -1638,14 +1471,14 @@ export default function PurchaseOrders() {
                               Payment Status
                             </th>
                           )}
-                          {visibleColumns.addedBy && (
-                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Added By
+                          {visibleColumns.grandTotal && (
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Grand Total
                             </th>
                           )}
-                          {visibleColumns.totalAmount && (
+                          {visibleColumns.paymentDue && (
                             <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Total Amount
+                              Payment Due
                             </th>
                           )}
                           <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -1654,56 +1487,56 @@ export default function PurchaseOrders() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border bg-background">
-                        {displayedOrders.map((order) => (
-                          <tr key={order.id} className="hover:bg-muted/10 transition-colors">
-                            {visibleColumns.orderDate && (
+                        {displayedReturns.map((returnOrder) => (
+                          <tr key={returnOrder.id} className="hover:bg-muted/10 transition-colors">
+                            {visibleColumns.returnDate && (
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                                {format(new Date(order.orderDate), 'PPP')}
+                                {format(new Date(returnOrder.returnDate), 'PPP')}
                               </td>
                             )}
                             {visibleColumns.referenceNumber && (
                               <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
-                                {order.referenceNumber}
+                                {returnOrder.referenceNumber}
+                              </td>
+                            )}
+                            {visibleColumns.parentPurchase && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground hover:text-primary">
+                                <button
+                                  onClick={() => navigate(`/purchases/orders/${returnOrder.parentPurchaseId}/view`)}
+                                  className="hover:underline"
+                                >
+                                  {returnOrder.parentPurchaseReference}
+                                </button>
                               </td>
                             )}
                             {visibleColumns.location && (
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                                {order.locationName}
+                                {returnOrder.locationName}
                               </td>
                             )}
                             {visibleColumns.supplier && (
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
-                                {order.supplierName}
+                                {returnOrder.supplierName}
                               </td>
                             )}
                             {visibleColumns.status && (
                               <td className="whitespace-nowrap px-4 py-3">
-                                <StatusBadge status={order.status} />
-                              </td>
-                            )}
-                            {visibleColumns.items && (
-                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-foreground">
-                                {order.itemsCount || 0}
-                              </td>
-                            )}
-                            {visibleColumns.deliveryStatus && (
-                              <td className="whitespace-nowrap px-4 py-3">
-                                <StatusBadge status={order.deliveryStatus} />
+                                <StatusBadge status={returnOrder.status} />
                               </td>
                             )}
                             {visibleColumns.paymentStatus && (
                               <td className="whitespace-nowrap px-4 py-3">
-                                <StatusBadge status={order.paymentStatus} />
+                                <PaymentStatusBadge status={returnOrder.paymentStatus} />
                               </td>
                             )}
-                            {visibleColumns.addedBy && (
-                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                                {order.createdBy?.name || 'System'}
-                              </td>
-                            )}
-                            {visibleColumns.totalAmount && (
+                            {visibleColumns.grandTotal && (
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-foreground">
-                                {formatMoney(order.totalAmount, currencyCode, currencyPrecision, currencyPlacement)}
+                                {formatMoney(returnOrder.grandTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                              </td>
+                            )}
+                            {visibleColumns.paymentDue && (
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-amber-600">
+                                {formatMoney(returnOrder.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}
                               </td>
                             )}
                             <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -1712,14 +1545,14 @@ export default function PurchaseOrders() {
                                   type="button"
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    openActionMenu(order, event.currentTarget);
+                                    openActionMenu(returnOrder, event.currentTarget);
                                   }}
                                   className="rounded p-1.5 text-muted-foreground hover:bg-surface-alt hover:text-foreground"
-                                  aria-label="Open order actions"
+                                  aria-label="Open return actions"
                                 >
                                   <MoreVertical className="h-4 w-4" />
                                 </button>
-                                {actionMenuOpenFor === order.id && actionMenuPosition && activeOrder?.id === order.id && (
+                                {actionMenuOpenFor === returnOrder.id && actionMenuPosition && activeReturn?.id === returnOrder.id && (
                                   <div
                                     ref={actionMenuRef}
                                     className="fixed z-50 w-64 rounded-xl border border-border bg-background p-2 shadow-2xl shadow-black/10"
@@ -1731,45 +1564,35 @@ export default function PurchaseOrders() {
                                     <div className="px-3 py-2">
                                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions for</p>
                                       <p className="truncate text-sm font-medium text-foreground">
-                                        {activeOrder?.referenceNumber ?? 'this order'}
+                                        {activeReturn?.referenceNumber ?? 'this return'}
                                       </p>
                                     </div>
                                     <div className="divide-y divide-border p-1">
                                       <ActionMenuItem
                                         icon={Eye}
                                         label="View"
-                                        onClick={() => handleOrderAction('view', order)}
+                                        onClick={() => handleReturnAction('view', returnOrder)}
                                       />
                                       <ActionMenuItem
                                         icon={Printer}
                                         label="Print"
-                                        onClick={() => handleOrderAction('print', order)}
+                                        onClick={() => handleReturnAction('print', returnOrder)}
                                       />
                                       <ActionMenuItem
                                         icon={Download}
                                         label="Download Pdf"
-                                        onClick={() => handleOrderAction('download-pdf', order)}
+                                        onClick={() => handleReturnAction('download-pdf', returnOrder)}
                                       />
                                       <ActionMenuItem
                                         icon={Edit}
                                         label="Edit"
-                                        onClick={() => handleOrderAction('edit', order)}
+                                        onClick={() => handleReturnAction('edit', returnOrder)}
                                       />
                                       <ActionMenuItem
                                         icon={Trash2}
                                         label="Delete"
                                         destructive
-                                        onClick={() => handleOrderAction('delete', order)}
-                                      />
-                                      <ActionMenuItem
-                                        icon={Truck}
-                                        label="Update Order Status"
-                                        onClick={() => handleOrderAction('edit-delivery', order)}
-                                      />
-                                      <ActionMenuItem
-                                        icon={Bell}
-                                        label="Send Notification"
-                                        onClick={() => handleOrderAction('send-notification', order)}
+                                        onClick={() => handleReturnAction('delete', returnOrder)}
                                       />
                                     </div>
                                   </div>
@@ -1784,11 +1607,11 @@ export default function PurchaseOrders() {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
                     <p className="text-sm text-muted-foreground">
-                      Showing <span className="font-medium text-foreground">{Math.min((currentPage - 1) * rowsPerPage + 1, filteredOrders.length)}</span> to{' '}
+                      Showing <span className="font-medium text-foreground">{Math.min((currentPage - 1) * rowsPerPage + 1, filteredReturns.length)}</span> to{' '}
                       <span className="font-medium text-foreground">
-                        {Math.min(currentPage * rowsPerPage, filteredOrders.length)}
+                        {Math.min(currentPage * rowsPerPage, filteredReturns.length)}
                       </span>{' '}
-                      of <span className="font-medium text-foreground">{filteredOrders.length}</span> orders
+                      of <span className="font-medium text-foreground">{filteredReturns.length}</span> returns
                     </p>
                     <div className="flex items-center gap-2">
                       <button
@@ -1819,7 +1642,8 @@ export default function PurchaseOrders() {
         )}
       </div>
 
-      {deleteModalOrder ? (
+      {/* Delete Modal */}
+      {deleteModalReturn ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-6 backdrop-blur-sm" onClick={closeDeleteModal}>
           <div
             className="w-full max-w-xl rounded-xl border border-border bg-card shadow-2xl"
@@ -1827,10 +1651,10 @@ export default function PurchaseOrders() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-destructive">Delete purchase order</p>
-                <h3 className="mt-1 text-lg font-semibold text-foreground">{deleteModalOrder.referenceNumber}</h3>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-destructive">Delete purchase return</p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">{deleteModalReturn.referenceNumber}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  This will soft delete the order and hide it from the active list.
+                  This will soft delete the return and hide it from the active list.
                 </p>
               </div>
               <button
@@ -1847,23 +1671,30 @@ export default function PurchaseOrders() {
               <div className="rounded-xl border border-border bg-background p-4 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">Supplier</span>
-                  <span className="font-medium text-foreground">{deleteModalOrder.supplierName}</span>
+                  <span className="font-medium text-foreground">{deleteModalReturn.supplierName}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Parent Purchase</span>
+                  <span className="font-medium text-foreground">{deleteModalReturn.parentPurchaseReference}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">Status</span>
-                  <StatusBadge status={deleteModalOrder.status} />
+                  <StatusBadge status={deleteModalReturn.status} />
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">Total</span>
+                  <span className="text-muted-foreground">Grand Total</span>
                   <span className="font-medium text-foreground">
-                    {formatMoney(deleteModalOrder.totalAmount, currencyCode, currencyPrecision, currencyPlacement)}
+                    {formatMoney(deleteModalReturn.grandTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                  </span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Payment Due</span>
+                  <span className="font-medium text-amber-600">
+                    {formatMoney(deleteModalReturn.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}
                   </span>
                 </div>
               </div>
 
-              <p className="text-sm text-muted-foreground">
-                If the status is not marked as deletable in the database, the server will block this action.
-              </p>
               {deleteModalError ? (
                 <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
                   {deleteModalError}
@@ -1891,215 +1722,8 @@ export default function PurchaseOrders() {
                     Deleting...
                   </span>
                 ) : (
-                  'Delete Order'
+                  'Delete Return'
                 )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {notificationModalOrder ? (
-        <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 px-0 py-0 backdrop-blur-sm md:items-center md:px-4 md:py-6" onClick={closeNotificationModal}>
-          <div
-            className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl md:h-[90vh] md:w-4/5 md:max-w-[80vw] md:rounded-sm"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  Send notification
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-foreground">{notificationModalOrder.referenceNumber}</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Compose the message and choose the channel for this purchase order.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeNotificationModal}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
-                aria-label="Close notification modal"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-              {actionError ? (
-                <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                    <p>{actionError}</p>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-border bg-background p-4">
-                    <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
-                    <div className="mt-3 space-y-2 text-sm">
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Reference</span>
-                        <span className="font-medium text-foreground">{notificationModalOrder.referenceNumber}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Supplier</span>
-                        <span className="font-medium text-foreground">{notificationModalOrder.supplierName}</span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-muted-foreground">Status</span>
-                        <StatusBadge status={notificationModalOrder.status} />
-                      </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-muted-foreground">Total</span>
-                        <span className="font-medium text-foreground">
-                          {`${notificationModalOrder.itemsCount} item${notificationModalOrder.itemsCount === 1 ? '' : 's'} · ${formatMoney(
-                            notificationModalOrder.totalAmount,
-                            currencyCode,
-                            currencyPrecision,
-                            currencyPlacement,
-                          )}`}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-border bg-background p-4">
-                    <p className="text-sm font-semibold text-foreground">Delivery Channels</p>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setNotificationForm((current) => ({ ...current, mode: 'email' }))}
-                        className={`inline-flex flex-1 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                          notificationForm.mode === 'email'
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border text-foreground hover:bg-surface-alt'
-                        }`}
-                      >
-                        Email
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNotificationForm((current) => ({ ...current, mode: 'sms_whatsapp' }))}
-                        className={`inline-flex flex-1 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                          notificationForm.mode === 'sms_whatsapp'
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border text-foreground hover:bg-surface-alt'
-                        }`}
-                      >
-                        Sms/Whatsapp
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {notificationForm.mode === 'email' ? (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-sm font-medium text-foreground">To</label>
-                          <input
-                            value={notificationForm.emailTo}
-                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailTo: event.target.value }))}
-                            placeholder="person@example.com, second@example.com"
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                          <p className="mt-1 text-xs text-muted-foreground">Separate multiple emails with commas.</p>
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="mb-1 block text-sm font-medium text-foreground">Subject</label>
-                          <input
-                            value={notificationForm.emailSubject}
-                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailSubject: event.target.value }))}
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-foreground">CC</label>
-                          <input
-                            value={notificationForm.emailCc}
-                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailCc: event.target.value }))}
-                            placeholder="cc@example.com"
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-foreground">BCC</label>
-                          <input
-                            value={notificationForm.emailBcc}
-                            onChange={(event) => setNotificationForm((current) => ({ ...current, emailBcc: event.target.value }))}
-                            placeholder="bcc@example.com"
-                            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-sm font-medium text-foreground">Message</label>
-                        <div className="overflow-hidden rounded-lg border border-border bg-background outline-none focus-within:ring-1 focus-within:ring-primary">
-                          <CKEditor
-                            editor={ClassicEditor}
-                            data={notificationForm.emailMessage}
-                            config={{
-                              licenseKey: 'GPL',
-                              plugins: [Essentials, Paragraph, Heading, Bold, Italic, Link, List, BlockQuote, Undo],
-                              toolbar: ['undo', 'redo', '|', 'heading', '|', 'bold', 'italic', 'link', '|', 'bulletedList', 'numberedList', 'blockQuote'],
-                              placeholder: 'Write the email message...',
-                            }}
-                            onChange={(_, editor) => {
-                              setNotificationForm((current) => ({ ...current, emailMessage: editor.getData() }));
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-foreground">Receiver Phone Numbers</label>
-                        <input
-                          value={notificationForm.smsWhatsappReceivers}
-                          onChange={(event) => setNotificationForm((current) => ({ ...current, smsWhatsappReceivers: event.target.value }))}
-                          placeholder="0712345678, 0723456789"
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">Use commas to separate multiple numbers. Each number must start with 0 and have 10 digits.</p>
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-foreground">Message</label>
-                        <textarea
-                          value={notificationForm.smsWhatsappMessage}
-                          onChange={(event) => setNotificationForm((current) => ({ ...current, smsWhatsappMessage: event.target.value }))}
-                          rows={9}
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                          placeholder="Type the message..."
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0 flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-end">
-              <button
-                type="button"
-                onClick={closeNotificationModal}
-                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSendNotification()}
-                disabled={notificationSaving}
-                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {notificationSaving ? 'Sending...' : 'Send Notification'}
               </button>
             </div>
           </div>

@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Calendar } from 'lucide-react';
@@ -29,9 +31,18 @@ export default function DatePickerField({
   maxDate,
   className = '',
   error = false,
+  usePortal = false,
   disabled = false,
 }: DatePickerFieldProps) {
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
+  const popperContainer = usePortal
+    ? ({ children }: { children?: ReactNode }) => {
+        if (typeof document === 'undefined') {
+          return <>{children}</>;
+        }
+        return createPortal(children, document.body);
+      }
+    : undefined;
 
   return (
     <div className={`relative ${className}`}>
@@ -45,7 +56,8 @@ export default function DatePickerField({
         minDate={minDate}
         maxDate={maxDate}
         popperPlacement="bottom-start"
-        popperClassName="z-50"
+        popperClassName="z-[9999]"
+        popperContainer={popperContainer}
         showPopperArrow={false}
         shouldCloseOnSelect
         className={`w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${

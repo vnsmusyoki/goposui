@@ -93,13 +93,23 @@ type AdditionalExpense = {
 // Helpers
 // --------------------------------------------------------------------------
 
-function formatMoney(amount: number, currencyCode: string, precision: number, placement: 'before' | 'after') {
+function formatMoney(
+  amount: number,
+  currencyCode: string,
+  precision: number,
+  placement: 'before' | 'after',
+  showSymbol = true,
+) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
   const currencySymbol = getCurrencySymbol(currencyCode);
   const numeric = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision,
   }).format(safeAmount);
+
+  if (!showSymbol) {
+    return numeric;
+  }
 
   return placement === 'after' ? `${numeric} ${currencySymbol}` : `${currencySymbol} ${numeric}`;
 }
@@ -473,6 +483,8 @@ export default function CreatePurchaseOrder() {
   const currencySymbol = getCurrencySymbol(currencyCode);
   const defaultProfitPercentage =
     typeof businessSettings?.defaultProfitPercentage === 'number' ? businessSettings.defaultProfitPercentage : 0;
+  const moneyHeaderSuffix = `(${currencyCode})`;
+  const sellingPriceHeader = defaultProfitPercentage > 0 ? `Selling Price (${defaultProfitPercentage}% profit)` : 'Selling Price';
   const showExpiryFields = Boolean(productSettings?.enableProductExpiry);
   const showLotNumberField = Boolean(purchasesSettings?.enableLotNumber);
   const itemTableColumnCount = 10 + (showExpiryFields ? 1 : 0) + (showLotNumberField ? 1 : 0);
@@ -708,7 +720,7 @@ export default function CreatePurchaseOrder() {
 
       await createPurchaseOrder(payload);
       toast.success(`Purchase order ${status === 'draft' ? 'saved as draft' : 'created'} successfully`);
-      navigate('/purchases/order');
+      navigate('/purchases/orders');
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message || 'Failed to create purchase order');
@@ -1050,44 +1062,44 @@ export default function CreatePurchaseOrder() {
             >
               <thead className="bg-muted/30">
                 <tr>
-                  <th className="w-[360px] px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="w-[360px] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Product
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Qty
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Unit Cost <br />(Before Discount)
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Unit Cost <br />(Before Discount) <br />{moneyHeaderSuffix}
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Discount %
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Unit Cost <br />(Before Tax)
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Unit Cost <br />(Before Tax) <br />{moneyHeaderSuffix}
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Tax %
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Net Cost
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Net Cost <br />{moneyHeaderSuffix}
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Selling Price
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {sellingPriceHeader}
                   </th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Line Cost
+                  <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Line Cost <br />{moneyHeaderSuffix}
                   </th>
                   {showExpiryFields && (
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Expiry
                     </th>
                   )}
                   {showLotNumberField && (
-                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Lot #
                     </th>
                   )}
-                  <th className="px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Actions
                   </th>
                 </tr>
@@ -1140,7 +1152,7 @@ export default function CreatePurchaseOrder() {
                         />
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-foreground">
-                        {formatMoney(item.unitCostBeforeTax, currencyCode, currencyPrecision, currencyPlacement)}
+                        {formatMoney(item.unitCostBeforeTax, currencyCode, currencyPrecision, currencyPlacement, false)}
                       </td>
                       <td className="px-4 py-3">
                         <input
@@ -1154,7 +1166,7 @@ export default function CreatePurchaseOrder() {
                         />
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-foreground">
-                        {formatMoney(item.netCost, currencyCode, currencyPrecision, currencyPlacement)}
+                        {formatMoney(item.netCost, currencyCode, currencyPrecision, currencyPlacement, false)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="space-y-1">
@@ -1166,15 +1178,10 @@ export default function CreatePurchaseOrder() {
                             onChange={(e) => updateItem(item.id, 'sellingPrice', Math.max(0, parseFloat(e.target.value) || 0))}
                             className="w-24 rounded border border-border bg-background px-2 py-1 text-right text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                           />
-                          <p className="text-[11px] leading-4 text-muted-foreground">
-                            {item.isSellingPriceManual
-                              ? 'Manual override enabled'
-                              : `Auto-applied from default profit margin (${defaultProfitPercentage}%)`}
-                          </p>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-foreground">
-                        {formatMoney(item.lineCost, currencyCode, currencyPrecision, currencyPlacement)}
+                        {formatMoney(item.lineCost, currencyCode, currencyPrecision, currencyPlacement, false)}
                       </td>
                       {showExpiryFields && (
                         <td className="px-4 py-3">
@@ -1230,19 +1237,19 @@ export default function CreatePurchaseOrder() {
           icon={Truck}
         >
           <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="space-y-4 rounded-sm border border-border bg-background p-4">
-                <h3 className="text-sm font-semibold text-foreground">Delivery Details</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Delivery Address</label>
-                    <textarea
-                      value={formData.deliveryAddress}
-                      onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
-                      placeholder={selectedLocation ? 'Defaulted from selected location, editable' : 'Select a location to auto-fill the address'}
-                      className="min-h-[96px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
+            <div className="w-full space-y-4 rounded-sm border border-border bg-background p-4">
+              <h3 className="text-sm font-semibold text-foreground">Delivery Details</h3>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                <div className="space-y-1.5 lg:col-span-4">
+                  <label className="text-xs font-medium text-muted-foreground">Delivery Address</label>
+                  <textarea
+                    value={formData.deliveryAddress}
+                    onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                    placeholder={selectedLocation ? 'Defaulted from selected location, editable' : 'Select a location to auto-fill the address'}
+                    className="min-h-[96px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="lg:col-span-1">
                   <CurrencyInput
                     label="Delivery Charges"
                     value={formData.deliveryCharges}
@@ -1251,9 +1258,8 @@ export default function CreatePurchaseOrder() {
                     currencySymbol={currencySymbol}
                     currencyPlacement={currencyPlacement}
                   />
-                  <p className="text-[11px] text-muted-foreground md:col-span-2">
-                    Business currency: {currencyCode}
-                  </p>
+                </div>
+                <div className="lg:col-span-1">
                   <SelectField
                     label="Delivery Status"
                     value={formData.deliveryStatus}
@@ -1271,103 +1277,103 @@ export default function CreatePurchaseOrder() {
                     placeholder="Select status"
                     icon={Truck}
                   />
-                  <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Delivery Documents</label>
-                    {formData.deliveryDocument ? (
-                      <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
-                        <FileText className="h-8 w-8 text-primary" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-foreground">{formData.deliveryDocument.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {(formData.deliveryDocument.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setFormData({ ...formData, deliveryDocument: null })}
-                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                </div>
+                <div className="lg:col-span-2 space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Delivery Documents</label>
+                  {formData.deliveryDocument ? (
+                    <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                      <FileText className="h-8 w-8 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{formData.deliveryDocument.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {(formData.deliveryDocument.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
                       </div>
-                    ) : (
                       <button
                         type="button"
-                        onClick={() => deliveryFileInputRef.current?.click()}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-background p-4 text-sm text-muted-foreground hover:border-primary/60 hover:bg-muted/20 transition-colors"
+                        onClick={() => setFormData({ ...formData, deliveryDocument: null })}
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                       >
-                        <Upload className="h-5 w-5" />
-                        Upload Delivery Document (PDF only, Max 10MB)
+                        <X className="h-4 w-4" />
                       </button>
-                    )}
-                    <input
-                      ref={deliveryFileInputRef}
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={handleDeliveryDocumentUpload}
-                      className="hidden"
-                    />
-                  </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => deliveryFileInputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-background p-4 text-sm text-muted-foreground hover:border-primary/60 hover:bg-muted/20 transition-colors"
+                    >
+                      <Upload className="h-5 w-5" />
+                      Upload Delivery Document (PDF only, Max 10MB)
+                    </button>
+                  )}
+                  <input
+                    ref={deliveryFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handleDeliveryDocumentUpload}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full space-y-4 rounded-sm border border-border bg-background p-4">
+              <h3 className="text-sm font-semibold text-foreground">Discount & Additional Expenses</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <CurrencyInput
+                  label="Discount"
+                  value={formData.orderDiscountAmount}
+                  onChange={(value) => setFormData({ ...formData, orderDiscountAmount: value })}
+                  placeholder="0.00"
+                  currencySymbol={currencySymbol}
+                  currencyPlacement={currencyPlacement}
+                />
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={addAdditionalExpense}
+                    disabled={additionalExpenses.length >= 5}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Expense
+                  </button>
                 </div>
               </div>
 
-              <div className="space-y-4 rounded-sm border border-border bg-background p-4">
-                <h3 className="text-sm font-semibold text-foreground">Discount & Additional Expenses</h3>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <CurrencyInput
-                    label="Discount"
-                    value={formData.orderDiscountAmount}
-                    onChange={(value) => setFormData({ ...formData, orderDiscountAmount: value })}
-                    placeholder="0.00"
-                    currencySymbol={currencySymbol}
-                    currencyPlacement={currencyPlacement}
-                  />
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={addAdditionalExpense}
-                      disabled={additionalExpenses.length >= 5}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Expense
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {additionalExpenses.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No additional expenses added yet.</p>
-                  ) : (
-                    additionalExpenses.map((expense, index) => (
-                      <div key={expense.id} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_auto]">
-                        <FormInput
-                          label={`Expense ${index + 1} Name`}
-                          value={expense.name}
-                          onChange={(value) => updateAdditionalExpense(expense.id, 'name', value)}
-                          placeholder="e.g. Loading fees"
-                        />
-                        <CurrencyInput
-                          label="Amount"
-                          value={expense.amount}
-                          onChange={(value) => updateAdditionalExpense(expense.id, 'amount', value)}
-                          placeholder="0.00"
-                          currencySymbol={currencySymbol}
-                          currencyPlacement={currencyPlacement}
-                        />
-                        <div className="flex items-end">
-                          <button
-                            type="button"
-                            onClick={() => removeAdditionalExpense(expense.id)}
-                            className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-3 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+              <div className="space-y-3">
+                {additionalExpenses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No additional expenses added yet.</p>
+                ) : (
+                  additionalExpenses.map((expense, index) => (
+                    <div key={expense.id} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_auto]">
+                      <FormInput
+                        label={`Expense ${index + 1} Name`}
+                        value={expense.name}
+                        onChange={(value) => updateAdditionalExpense(expense.id, 'name', value)}
+                        placeholder="e.g. Loading fees"
+                      />
+                      <CurrencyInput
+                        label="Amount"
+                        value={expense.amount}
+                        onChange={(value) => updateAdditionalExpense(expense.id, 'amount', value)}
+                        placeholder="0.00"
+                        currencySymbol={currencySymbol}
+                        currencyPlacement={currencyPlacement}
+                      />
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeAdditionalExpense(expense.id)}
+                          className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-3 text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                    ))
-                  )}
-                </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

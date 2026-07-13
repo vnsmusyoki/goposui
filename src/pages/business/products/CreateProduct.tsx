@@ -331,13 +331,23 @@ function getCurrencySymbol(currencyCode?: string) {
   }
 }
 
-function formatMoney(amount: number, currencyCode: string, precision: number, placement: 'before' | 'after') {
+function formatMoney(
+  amount: number,
+  currencyCode: string,
+  precision: number,
+  placement: 'before' | 'after',
+  showSymbol = true,
+) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
   const currencySymbol = getCurrencySymbol(currencyCode);
   const numeric = new Intl.NumberFormat('en-US', {
     minimumFractionDigits: precision,
     maximumFractionDigits: precision,
   }).format(safeAmount);
+
+  if (!showSymbol) {
+    return numeric;
+  }
 
   return placement === 'after' ? `${numeric} ${currencySymbol}` : `${currencySymbol} ${numeric}`;
 }
@@ -364,13 +374,13 @@ function MoneyInput({
   disabled?: boolean;
 }) {
   const currencySymbol = getCurrencySymbol(currencyCode);
-  const placeholder = placeholderZero ? formatMoney(0, currencyCode, currencyPrecision, currencyPlacement) : '';
+  const placeholder = placeholderZero ? formatMoney(0, currencyCode, currencyPrecision, currencyPlacement, false) : '';
   const step = `0.${'0'.repeat(Math.max(0, currencyPrecision - 1))}1`;
 
   return (
     <div className="relative mt-2">
       {currencyPlacement === 'before' ? (
-        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
           {currencySymbol}
         </span>
       ) : null}
@@ -383,10 +393,10 @@ function MoneyInput({
         placeholder={placeholder}
         disabled={disabled}
         step={step as unknown as number}
-        className={`${baseFieldWithIconClass} ${currencyPlacement === 'before' ? 'pl-9' : 'pr-12'} ${className}`}
+        className={`${baseFieldWithIconClass} ${currencyPlacement === 'before' ? 'pl-11' : 'pr-11'} ${className}`}
       />
       {currencyPlacement === 'after' ? (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
           {currencySymbol}
         </span>
       ) : null}
@@ -1186,7 +1196,6 @@ export default function CreateProduct() {
 
             <div>
               <FieldLabel>SKU</FieldLabel>
-              <p className="mt-1 text-xs text-muted-foreground">Optional. Leave blank if you do not use SKUs for this product.</p>
               <div className="relative mt-2">
                 <Tag className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -1198,6 +1207,7 @@ export default function CreateProduct() {
                   errors.sku ? 'border-destructive' : 'border-border'
                 }`}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">Optional. Leave blank if you do not use SKUs for this product.</p>
               </div>
             </div>
 
@@ -1641,7 +1651,7 @@ export default function CreateProduct() {
               <label className="text-sm font-medium text-muted-foreground">Purchase Price (Exclusive)</label>
               <input
                 type="text"
-                value={formatMoney(formData.purchasePriceExclusive, currencyCode, currencyPrecision, currencyPlacement)}
+                value={formatMoney(formData.purchasePriceExclusive, currencyCode, currencyPrecision, currencyPlacement, false)}
                 disabled
                 className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-4 py-2.5 text-sm text-foreground opacity-70 outline-none"
               />
@@ -1651,7 +1661,7 @@ export default function CreateProduct() {
               <label className="text-sm font-medium text-muted-foreground">Purchase Price (Inclusive)</label>
               <input
                 type="text"
-                value={formatMoney(formData.purchasePriceInclusive, currencyCode, currencyPrecision, currencyPlacement)}
+                value={formatMoney(formData.purchasePriceInclusive, currencyCode, currencyPrecision, currencyPlacement, false)}
                 disabled
                 className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-4 py-2.5 text-sm text-foreground opacity-70 outline-none"
               />
