@@ -3,17 +3,44 @@ import { ApiError, apiRequest } from '@/lib/api';
 
 export type PurchaseOrderStatus =
   | 'draft'
+  | 'pending_approval'
   | 'pending'
   | 'approved'
+  | 'sent'
   | 'ordered'
   | 'received'
   | 'partially_received'
+  | 'closed'
   | 'cancelled'
   | 'completed';
 
 export type DeliveryStatus = 'pending_delivery' | 'in_transit' | 'delivered';
 
 export type PaymentStatus = 'unpaid' | 'partially_paid' | 'paid';
+
+type PurchaseOrderLineInput = {
+  productId: string;
+  orderQuantity: number;
+  unitCostBeforeDiscount: number;
+  discountPercentage: number;
+  discountAmount: number;
+  unitCostBeforeTax: number;
+  productTaxRate: number;
+  taxAmount: number;
+  netCost: number;
+  sellingPrice: number;
+  lineCost: number;
+  manufactureDate?: string;
+  expiryDate: string;
+  lotNumber: string;
+  receivedQuantity?: number | null;
+};
+
+type PurchaseOrderExpenseInput = {
+  name: string;
+  amount: number;
+  sortOrder?: number;
+};
 
 export type PurchaseOrder = {
   id: string;
@@ -53,28 +80,25 @@ type CreatePurchaseOrderInput = {
   orderDate: string;
   deliveryDate: string;
   locationId: string;
+  deliveryAddress?: string;
+  deliveryCharges?: number;
+  deliveryDocument?: File | string | null;
+  orderDiscountAmount?: number;
+  approvalReminderMessage?: string;
+  approvalReminderReceivers?: string[];
   paymentTerm: {
     value: number;
     unit: 'days' | 'months' | 'years';
   };
-  attachment: File | null;
+  attachment: File | string | null;
   notes: string;
   status: PurchaseOrderStatus;
-  items: Array<{
-    productId: string;
-    orderQuantity: number;
-    unitCostBeforeDiscount: number;
-    discountPercentage: number;
-    discountAmount: number;
-    unitCostBeforeTax: number;
-    productTaxRate: number;
-    taxAmount: number;
-    netCost: number;
-    sellingPrice: number;
-    lineCost: number;
-    expiryDate: string;
-    lotNumber: string;
-  }>;
+  deliveryStatus?: DeliveryStatus;
+  paymentStatus?: PaymentStatus;
+  approvalReminderChannels?: ('notification' | 'sms' | 'whatsapp')[];
+  items: PurchaseOrderLineInput[];
+  additionalExpenses?: PurchaseOrderExpenseInput[];
+  grandTotal?: number;
   totals: {
     subtotal: number;
     totalDiscount: number;
@@ -85,12 +109,65 @@ type CreatePurchaseOrderInput = {
   };
 };
 
+export type UpdatePurchaseOrderInput = CreatePurchaseOrderInput;
+
 function normalizePurchaseOrder(order: PurchaseOrder): PurchaseOrder {
   return {
     ...order,
     totalAmount: Number(order.totalAmount ?? 0),
     itemsCount: Number(order.itemsCount ?? 0),
     createdBy: order.createdBy ?? null,
+  };
+}
+
+function buildPurchaseOrderPayload(data: CreatePurchaseOrderInput) {
+  const attachmentName =
+    typeof data.attachment === 'string'
+      ? data.attachment
+      : typeof File !== 'undefined' && data.attachment instanceof File
+        ? data.attachment.name
+        : null;
+  const deliveryDocumentName =
+    typeof data.deliveryDocument === 'string'
+      ? data.deliveryDocument
+      : typeof File !== 'undefined' && data.deliveryDocument instanceof File
+        ? data.deliveryDocument.name
+        : null;
+
+  return {
+    supplier_id: data.supplierId,
+    reference_number: data.referenceNumber,
+    order_date: data.orderDate,
+    delivery_date: data.deliveryDate || null,
+    location_id: data.locationId,
+    delivery_address: data.deliveryAddress ?? null,
+    delivery_charges: data.deliveryCharges ?? 0,
+    delivery_document: deliveryDocumentName,
+    order_discount_amount: data.orderDiscountAmount ?? 0,
+    payment_term_value: data.paymentTerm.value,
+    payment_term_unit: data.paymentTerm.unit,
+    attachment: attachmentName,
+    notes: data.notes,
+    status: data.status,
+    delivery_status: data.deliveryStatus ?? 'pending_delivery',
+    payment_status: data.paymentStatus ?? 'unpaid',
+    approval_reminder_channels: data.approvalReminderChannels ?? null,
+    approval_reminder_message: data.approvalReminderMessage ?? null,
+    items: data.items.map((item) => ({
+      ...item,
+    })),
+    additionalExpenses: (data.additionalExpenses ?? []).map((expense, index) => ({
+      name: expense.name,
+      amount: expense.amount,
+      sortOrder: expense.sortOrder ?? index,
+    })),
+    subtotal: data.totals.subtotal,
+    total_discount: data.totals.totalDiscount,
+    total_tax: data.totals.totalTax,
+    grand_total: data.grandTotal ?? data.totals.total,
+    items_count: data.totals.itemCount,
+    total_quantity: data.totals.totalQuantity,
+    totals: data.totals,
   };
 }
 
@@ -143,30 +220,41 @@ export function usePurchaseOrders() {
     try {
       const response = await apiRequest<PurchaseOrderResponse>('/purchases/orders', {
         method: 'POST',
-        body: JSON.stringify({
-          supplier_id: data.supplierId,
-          reference_number: data.referenceNumber,
-          order_date: data.orderDate,
-          delivery_date: data.deliveryDate || null,
-          location_id: data.locationId,
-          payment_term_value: data.paymentTerm.value,
-          payment_term_unit: data.paymentTerm.unit,
-          attachment: data.attachment ? data.attachment.name : null,
-          notes: data.notes,
-          status: data.status,
-          // Keep the API payload explicit so the backend can persist per-line selling price.
-          items: data.items.map((item) => ({
-            ...item,
-          })),
-          totals: data.totals,
-        }),
+        body: JSON.stringify(buildPurchaseOrderPayload(data)),
       });
 
       const nextOrder = normalizePurchaseOrder(response);
       setPurchaseOrders((current) => [nextOrder, ...current.filter((order) => order.id !== nextOrder.id)]);
-      return nextOrder;
+      return response;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to create purchase order.';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const updatePurchaseOrder = useCallback(async (id: string, data: UpdatePurchaseOrderInput) => {
+    const purchaseOrderId = id.trim();
+    if (!purchaseOrderId) {
+      throw new ApiError('Purchase order ID is required.', 400, { message: 'Purchase order ID is required.' });
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await apiRequest<PurchaseOrderResponse>(`/purchases/orders/${purchaseOrderId}`, {
+        method: 'PUT',
+        body: JSON.stringify(buildPurchaseOrderPayload(data)),
+      });
+
+      const nextOrder = normalizePurchaseOrder(response);
+      setPurchaseOrders((current) => [nextOrder, ...current.filter((order) => order.id !== nextOrder.id)]);
+      return response;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to update purchase order.';
       setError(message);
       throw err;
     } finally {
@@ -184,6 +272,7 @@ export function usePurchaseOrders() {
     error,
     fetchPurchaseOrders,
     createPurchaseOrder,
+    updatePurchaseOrder,
     deletePurchaseOrder,
   };
 }

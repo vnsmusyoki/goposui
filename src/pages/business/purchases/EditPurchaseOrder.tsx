@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { useParams } from 'react-router-dom';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
 import { usePurchasesSettings } from '@/hooks/business/settings/usePurchasesSettings';
@@ -26,9 +27,9 @@ import { useProductSettings } from '@/hooks/business/settings/useProductSettings
 import { useBusinessSuppliers } from '@/hooks/business/suppliers/useBusinessSuppliers';
 import { useProducts, type ProductSearchResult } from '@/hooks/business/products/useProducts';
 import { usePurchaseOrders } from '@/hooks/business/purchases/usePurchaseOrders';
+import { usePurchaseOrderDetails } from '@/hooks/business/purchases/usePurchaseOrderDetails';
 import DatePickerField from '@/components/forms/DatePickerField';
 import { ApiError } from '@/lib/api';
-import { formatProductSkuDisplay } from '@/lib/productSku';
 
 // --------------------------------------------------------------------------
 // Types
@@ -121,6 +122,25 @@ function getCurrencySymbol(currencyCode?: string) {
 
 function generateId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function pickDateInputValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.slice(0, 10);
+}
+
+function buildLocationAddress(location: {
+  exactAddress?: string;
+  landmark?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+}) {
+  return [location.exactAddress, location.landmark, location.city, location.state, location.country]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(', ');
 }
 
 // --------------------------------------------------------------------------
@@ -426,15 +446,21 @@ function ProductSearchResult({
 // Main Component
 // --------------------------------------------------------------------------
 
-export default function CreatePurchaseOrder() {
+export default function EditPurchaseOrder() {
+  const { id: purchaseOrderId = '' } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { settings: businessSettings } = useBusinessSettings();
   const { settings: productSettings } = useProductSettings();
   const { settings: purchasesSettings } = usePurchasesSettings();
   const { locations } = useBusinessLocations();
   const { suppliers } = useBusinessSuppliers();
-  const { searchProducts, isLoading: searchLoading } = useProducts();
-  const { createPurchaseOrder, loading: saveLoading } = usePurchaseOrders();
+  const { searchProducts } = useProducts();
+  const { updatePurchaseOrder, loading: saveLoading } = usePurchaseOrders();
+  const {
+    error: detailError,
+    fetchPurchaseOrder,
+    clearError,
+  } = usePurchaseOrderDetails();
 
   const [formData, setFormData] = useState<FormState>({
     supplierId: '',
@@ -462,7 +488,11 @@ export default function CreatePurchaseOrder() {
   const [searchResults, setSearchResults] = useState<ProductSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [existingAttachmentName, setExistingAttachmentName] = useState('');
+  const [existingDeliveryDocumentName, setExistingDeliveryDocumentName] = useState('');
+  const [existingPaymentStatus, setExistingPaymentStatus] = useState<'unpaid' | 'partially_paid' | 'paid'>('unpaid');
+  const [deliveryAddressTouched, setDeliveryAddressTouched] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deliveryFileInputRef = useRef<HTMLInputElement>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -483,26 +513,114 @@ export default function CreatePurchaseOrder() {
   );
 
   useEffect(() => {
-    if (!selectedLocation) {
+    if (!selectedLocation || deliveryAddressTouched) {
       return;
     }
 
-    const defaultDeliveryAddress = [
-      selectedLocation.exactAddress,
-      selectedLocation.landmark,
-      selectedLocation.city,
-      selectedLocation.state,
-      selectedLocation.country,
-    ]
-      .map((part) => part?.trim())
-      .filter((part): part is string => Boolean(part))
-      .join(', ');
+    const defaultDeliveryAddress = buildLocationAddress(selectedLocation);
+    if (!defaultDeliveryAddress) {
+      return;
+    }
 
-    setFormData((current) => ({
-      ...current,
-      deliveryAddress: defaultDeliveryAddress || current.deliveryAddress,
-    }));
-  }, [selectedLocation]);
+    setFormData((current) => {
+      if (current.deliveryAddress.trim()) {
+        return current;
+      }
+      return {
+        ...current,
+        deliveryAddress: defaultDeliveryAddress,
+      };
+    });
+  }, [selectedLocation, deliveryAddressTouched]);
+
+  useEffect(() => {
+    if (!purchaseOrderId) {
+      toast.error('Purchase order ID is missing.');
+      navigate('/purchases/order');
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPurchaseOrder = async () => {
+      try {
+        clearError();
+        const response = await fetchPurchaseOrder(purchaseOrderId);
+        if (cancelled) {
+          return;
+        }
+
+        const order = response.purchaseOrder;
+        setFormData({
+          supplierId: order.supplierId,
+          referenceNumber: order.referenceNumber,
+          orderDate: pickDateInputValue(order.orderDate),
+          deliveryDate: pickDateInputValue(order.deliveryDate),
+          locationId: order.locationId,
+          deliveryAddress: order.deliveryAddress || '',
+          deliveryCharges: Number(order.deliveryCharges ?? 0),
+          deliveryStatus: (order.deliveryStatus as FormState['deliveryStatus']) || 'pending_delivery',
+          orderDiscountAmount: Number(order.orderDiscountAmount ?? 0),
+          paymentTerm: {
+            value: Number(order.paymentTermValue ?? 0),
+            unit: (order.paymentTermUnit as PaymentTermUnit) || 'days',
+          },
+          attachment: null,
+          deliveryDocument: null,
+          notes: order.notes || '',
+          status: (order.status as FormState['status']) || 'draft',
+        });
+        setItems(
+          (response.items ?? []).map((item) => ({
+            id: item.id || generateId(),
+            productId: item.productId,
+            productName: item.productName,
+            sku: item.sku,
+            unit: item.unit,
+            orderQuantity: Number(item.orderQuantity ?? 0),
+            unitCostBeforeDiscount: Number(item.unitCostBeforeDiscount ?? 0),
+            discountPercentage: Number(item.discountPercentage ?? 0),
+            discountAmount: Number(item.discountAmount ?? 0),
+            unitCostBeforeTax: Number(item.unitCostBeforeTax ?? 0),
+            productTaxRate: Number(item.productTaxRate ?? 0),
+            taxAmount: Number(item.taxAmount ?? 0),
+            netCost: Number(item.netCost ?? 0),
+            sellingPrice: Number(item.sellingPrice ?? 0),
+            isSellingPriceManual: true,
+            lineCost: Number(item.lineCost ?? 0),
+            expiryDate: pickDateInputValue(item.expiryDate),
+            lotNumber: item.lotNumber || '',
+            receivedQuantity: item.receivedQuantity ?? undefined,
+          })),
+        );
+        setAdditionalExpenses(
+          (order.additionalExpenses ?? []).map((expense) => ({
+            id: generateId(),
+            name: expense.name,
+            amount: Number(expense.amount ?? 0),
+          })),
+        );
+        setExistingAttachmentName(order.attachmentName || '');
+        setExistingDeliveryDocumentName(order.deliveryDocumentName || '');
+        setExistingPaymentStatus((order.paymentStatus as 'unpaid' | 'partially_paid' | 'paid') || 'unpaid');
+        setDeliveryAddressTouched(Boolean(order.deliveryAddress?.trim()));
+        setIsHydrated(true);
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        const message = err instanceof ApiError ? err.message : 'Failed to load purchase order.';
+        toast.error(message);
+        navigate('/purchases/order');
+      }
+    };
+
+    void loadPurchaseOrder();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clearError, fetchPurchaseOrder, navigate, purchaseOrderId]);
 
   const calculateSellingPrice = useCallback(
     (cost: number) => {
@@ -682,10 +800,11 @@ export default function CreatePurchaseOrder() {
     }
 
     try {
-      const payload = {
+      const purchaseOrderPayload = {
         ...formData,
         status,
-        deliveryDocument: formData.deliveryDocument ? formData.deliveryDocument.name : null,
+        attachment: formData.attachment ? formData.attachment : existingAttachmentName || null,
+        deliveryDocument: formData.deliveryDocument ? formData.deliveryDocument : existingDeliveryDocumentName || null,
         items: items.map((item) => ({
           productId: item.productId,
           orderQuantity: item.orderQuantity,
@@ -703,17 +822,22 @@ export default function CreatePurchaseOrder() {
         })),
         totals: orderTotals,
         additionalExpenses,
+        deliveryStatus: formData.deliveryStatus,
+        paymentStatus: existingPaymentStatus,
+        deliveryAddress: formData.deliveryAddress,
+        deliveryCharges: formData.deliveryCharges,
+        orderDiscountAmount: formData.orderDiscountAmount,
         grandTotal,
       };
 
-      await createPurchaseOrder(payload);
-      toast.success(`Purchase order ${status === 'draft' ? 'saved as draft' : 'created'} successfully`);
-      navigate('/purchases/order');
+      const response = await updatePurchaseOrder(purchaseOrderId, purchaseOrderPayload);
+      toast.success(response.message || `Purchase order ${status === 'draft' ? 'saved as draft' : 'updated'} successfully`);
+      navigate(`/purchases/orders/${purchaseOrderId}/view`);
     } catch (err) {
       if (err instanceof ApiError) {
-        toast.error(err.message || 'Failed to create purchase order');
+        toast.error(err.message || 'Failed to update purchase order');
       } else {
-        toast.error('Failed to create purchase order');
+        toast.error('Failed to update purchase order');
       }
     }
   };
@@ -734,6 +858,7 @@ export default function CreatePurchaseOrder() {
         return;
       }
       setFormData({ ...formData, attachment: file });
+      setExistingAttachmentName('');
     }
     e.target.value = '';
   };
@@ -754,8 +879,19 @@ export default function CreatePurchaseOrder() {
         return;
       }
       setFormData((current) => ({ ...current, deliveryDocument: file }));
+      setExistingDeliveryDocumentName('');
     }
     e.target.value = '';
+  };
+
+  const clearAttachment = () => {
+    setFormData((current) => ({ ...current, attachment: null }));
+    setExistingAttachmentName('');
+  };
+
+  const clearDeliveryDocument = () => {
+    setFormData((current) => ({ ...current, deliveryDocument: null }));
+    setExistingDeliveryDocumentName('');
   };
 
   const addAdditionalExpense = () => {
@@ -794,6 +930,26 @@ export default function CreatePurchaseOrder() {
     { value: 'years', label: 'Years' },
   ];
 
+  if (!isHydrated && !detailError) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="rounded-lg border border-border bg-card px-4 py-3 text-sm text-muted-foreground">
+          Loading purchase order...
+        </div>
+      </div>
+    );
+  }
+
+  if (detailError && !isHydrated) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {detailError}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 pb-10">
       {/* Header */}
@@ -809,9 +965,9 @@ export default function CreatePurchaseOrder() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Create Purchase Order</h1>
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Edit Purchase Order</h1>
               <p className="mt-0.5 text-sm text-muted-foreground hidden sm:block">
-                Add a new purchase order with products and supplier details
+                Update the saved purchase order details and save your changes
               </p>
             </div>
           </div>
@@ -832,7 +988,7 @@ export default function CreatePurchaseOrder() {
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               <Save className="h-4 w-4" />
-              Create Order
+              Update Order
             </button>
           </div>
         </div>
@@ -957,7 +1113,22 @@ export default function CreatePurchaseOrder() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, attachment: null })}
+                      onClick={clearAttachment}
+                      className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : existingAttachmentName ? (
+                  <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                    <FileText className="h-8 w-8 text-primary" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{existingAttachmentName}</p>
+                      <p className="text-xs text-muted-foreground">Previously saved document</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearAttachment}
                       className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
                       <X className="h-4 w-4" />
@@ -1238,7 +1409,10 @@ export default function CreatePurchaseOrder() {
                     <label className="text-xs font-medium text-muted-foreground">Delivery Address</label>
                     <textarea
                       value={formData.deliveryAddress}
-                      onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
+                      onChange={(e) => {
+                        setDeliveryAddressTouched(true);
+                        setFormData({ ...formData, deliveryAddress: e.target.value });
+                      }}
                       placeholder={selectedLocation ? 'Defaulted from selected location, editable' : 'Select a location to auto-fill the address'}
                       className="min-h-[96px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
                     />
@@ -1284,7 +1458,22 @@ export default function CreatePurchaseOrder() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, deliveryDocument: null })}
+                          onClick={clearDeliveryDocument}
+                          className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : existingDeliveryDocumentName ? (
+                      <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
+                        <FileText className="h-8 w-8 text-primary" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">{existingDeliveryDocumentName}</p>
+                          <p className="text-xs text-muted-foreground">Previously saved document</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearDeliveryDocument}
                           className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         >
                           <X className="h-4 w-4" />

@@ -149,8 +149,9 @@ const monthOptions: SelectOption[] = [
 ];
 
 const stockAccountingOptions: SelectOption[] = [
-  { value: 'FIFO', label: 'FIFO' },
-  { value: 'LIFO', label: 'LIFO' },
+  { value: 'FIFO', label: 'FIFO (First In, First Out)' },
+  { value: 'FEFO', label: 'FEFO (First Expired, First Out)' },
+  { value: 'LIFO', label: 'LIFO (Last In, First Out)' },
   { value: 'Average Cost', label: 'Average Cost' },
 ];
 

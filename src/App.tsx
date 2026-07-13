@@ -38,6 +38,9 @@ import ProductDetails from './pages/business/products/ProductDetails'
 import ProductOpeningStock from './pages/business/products/ProductOpeningStock'
 import PurchaseOrders from './pages/business/purchases/PurchaseOrders'
 import CreatePurchaseOrder from './pages/business/purchases/CreatePurchaseOrder'
+import PurchaseOrderDetails from './pages/business/purchases/PurchaseOrderDetails'
+import EditPurchaseOrder from './pages/business/purchases/EditPurchaseOrder'
+import UpdatePurchaseOrderStatus from './pages/business/purchases/UpdatePurchaseOrderStatus'
 
 function App() {
   return (
@@ -107,6 +110,9 @@ function App() {
           {/* PURCHASES */}
           <Route path="/purchases/order" element={<PurchaseOrders />} />
           <Route path="/purchases/list/create" element={<CreatePurchaseOrder />} />
+          <Route path="/purchases/orders/:id/view" element={<PurchaseOrderDetails />} />
+          <Route path="/purchases/orders/:id/edit" element={<EditPurchaseOrder />} />
+          <Route path="/purchases/orders/:id/update-status" element={<UpdatePurchaseOrderStatus />} />
         </Route>
       </Route>
 

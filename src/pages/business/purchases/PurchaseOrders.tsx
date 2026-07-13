@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Select, { type StylesConfig } from 'react-select';
 import {
   ArrowLeft,
   Plus,
@@ -22,6 +23,7 @@ import {
   Download,
   Printer,
   MoreVertical,
+  Columns3,
   BarChart3,
   Users,
   Building2,
@@ -31,6 +33,8 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Bell,
+  X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -39,7 +43,7 @@ import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettin
 import { useBusinessSuppliers } from '@/hooks/business/suppliers/useBusinessSuppliers';
 import { usePurchaseOrders, type PurchaseOrder, type PurchaseOrderStatus, type DeliveryStatus, type PaymentStatus } from '@/hooks/business/purchases/usePurchaseOrders';
 import { DateRangePicker } from '@/components/forms/DateRangePicker';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiDownload } from '@/lib/api';
 
 // --------------------------------------------------------------------------
 // Types
@@ -54,6 +58,123 @@ type FilterState = {
   dateRange: { from: Date | null; to: Date | null };
   searchQuery: string;
 };
+
+type VisibleColumns = {
+  orderDate: boolean;
+  referenceNumber: boolean;
+  location: boolean;
+  supplier: boolean;
+  status: boolean;
+  items: boolean;
+  deliveryStatus: boolean;
+  paymentStatus: boolean;
+  addedBy: boolean;
+  totalAmount: boolean;
+};
+
+type ExportColumnKey = keyof VisibleColumns;
+
+type ActionMenuState = {
+  top: number;
+  left: number;
+  placement: 'top' | 'bottom';
+} | null;
+
+type RowAction = 'view' | 'print' | 'download-pdf' | 'edit' | 'delete' | 'edit-delivery' | 'send-notification';
+
+type SelectOption = {
+  value: PurchaseOrderStatus;
+  label: string;
+};
+
+type StatusEffect = {
+  status: PurchaseOrderStatus;
+  meaning: string;
+  stockUpdated: string;
+  supplierBilled: string;
+};
+
+type ApprovalChannel = 'notification' | 'sms' | 'whatsapp';
+
+type ApprovalChannelState = Record<ApprovalChannel, boolean>;
+
+const ORDER_STATUS_EFFECTS: StatusEffect[] = [
+  { status: 'draft', meaning: 'Being prepared and can still be edited.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'pending', meaning: 'Waiting in the purchase order queue.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'pending_approval', meaning: 'Waiting for manager approval.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'approved', meaning: 'Approved internally and ready to send.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'sent', meaning: 'Sent to the supplier.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'ordered', meaning: 'Ordered from the supplier and awaiting fulfillment.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'partially_received', meaning: 'Some items have been received.', stockUpdated: 'Yes (partial)', supplierBilled: 'Usually No' },
+  { status: 'received', meaning: 'All ordered items have been received.', stockUpdated: 'Yes', supplierBilled: 'Usually No' },
+  { status: 'completed', meaning: 'Receipt, invoicing, and payment process finished.', stockUpdated: 'Yes', supplierBilled: 'Yes' },
+  { status: 'cancelled', meaning: 'Order cancelled before completion.', stockUpdated: 'No', supplierBilled: 'No' },
+  { status: 'closed', meaning: 'Locked for editing after everything is finalized.', stockUpdated: 'Yes', supplierBilled: 'Yes' },
+];
+
+const ORDER_STATUS_OPTIONS: SelectOption[] = [
+  { value: 'draft', label: 'Draft' },
+  { value: 'pending_approval', label: 'Pending Approval' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'sent', label: 'Sent' },
+  { value: 'ordered', label: 'Ordered' },
+  { value: 'partially_received', label: 'Partially Received' },
+  { value: 'received', label: 'Received' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+  { value: 'closed', label: 'Closed' },
+];
+
+const DEFAULT_VISIBLE_COLUMNS: VisibleColumns = {
+  orderDate: true,
+  referenceNumber: true,
+  location: true,
+  supplier: true,
+  status: true,
+  items: true,
+  deliveryStatus: true,
+  paymentStatus: true,
+  addedBy: true,
+  totalAmount: true,
+};
+
+const COLUMN_OPTIONS = [
+  { key: 'orderDate', label: 'Date' },
+  { key: 'referenceNumber', label: 'Reference No.' },
+  { key: 'location', label: 'Location' },
+  { key: 'supplier', label: 'Supplier' },
+  { key: 'status', label: 'Order Status' },
+  { key: 'items', label: 'Items' },
+  { key: 'deliveryStatus', label: 'Delivery Status' },
+  { key: 'paymentStatus', label: 'Payment Status' },
+  { key: 'addedBy', label: 'Added By' },
+  { key: 'totalAmount', label: 'Total Amount' },
+] as const;
+
+const EXPORT_COLUMN_ORDER: ExportColumnKey[] = [
+  'orderDate',
+  'referenceNumber',
+  'location',
+  'supplier',
+  'status',
+  'items',
+  'deliveryStatus',
+  'paymentStatus',
+  'addedBy',
+  'totalAmount',
+];
+
+const ROW_ACTIONS: Array<{ key: RowAction; label: string; destructive?: boolean }> = [
+  { key: 'view', label: 'View' },
+  { key: 'print', label: 'Print' },
+  { key: 'download-pdf', label: 'Download Pdf' },
+  { key: 'edit', label: 'Edit' },
+  { key: 'delete', label: 'Delete', destructive: true },
+  { key: 'edit-delivery', label: 'Edit Delivery' },
+  { key: 'send-notification', label: 'Send Notification' },
+];
+
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -88,11 +209,14 @@ function getCurrencySymbol(currencyCode?: string) {
 function getStatusColor(status: string): string {
   const colors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-700 border-gray-300',
+    pending_approval: 'bg-amber-100 text-amber-700 border-amber-300',
     pending: 'bg-yellow-100 text-yellow-700 border-yellow-300',
     approved: 'bg-blue-100 text-blue-700 border-blue-300',
+    sent: 'bg-cyan-100 text-cyan-700 border-cyan-300',
     ordered: 'bg-indigo-100 text-indigo-700 border-indigo-300',
     received: 'bg-green-100 text-green-700 border-green-300',
     partially_received: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+    closed: 'bg-slate-100 text-slate-700 border-slate-300',
     cancelled: 'bg-red-100 text-red-700 border-red-300',
     completed: 'bg-emerald-100 text-emerald-700 border-emerald-300',
     in_transit: 'bg-purple-100 text-purple-700 border-purple-300',
@@ -108,11 +232,14 @@ function getStatusColor(status: string): string {
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     draft: 'Draft',
+    pending_approval: 'Pending Approval',
     pending: 'Pending',
     approved: 'Approved',
+    sent: 'Sent',
     ordered: 'Ordered',
     received: 'Received',
     partially_received: 'Partially Received',
+    closed: 'Closed',
     cancelled: 'Cancelled',
     completed: 'Completed',
     in_transit: 'In Transit',
@@ -125,6 +252,70 @@ function getStatusLabel(status: string): string {
   return labels[status] || status;
 }
 
+function buildStatusEffectMap() {
+  return ORDER_STATUS_EFFECTS.reduce((acc, effect) => {
+    acc[effect.status] = effect;
+    return acc;
+  }, {} as Partial<Record<PurchaseOrderStatus, StatusEffect>>);
+}
+
+function purchaseOrderStatusSelectStyles(): StylesConfig<SelectOption, false> {
+  return {
+    control: (base, state) => ({
+      ...base,
+      minHeight: '42px',
+      borderRadius: '0.5rem',
+      borderColor: state.isFocused ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+      backgroundColor: 'hsl(var(--background))',
+      boxShadow: state.isFocused ? '0 0 0 1px hsl(var(--primary))' : 'none',
+      '&:hover': {
+        borderColor: state.isFocused ? 'hsl(var(--primary))' : 'hsl(var(--border))',
+      },
+    }),
+    menu: (base) => ({
+      ...base,
+      zIndex: 60,
+      borderRadius: '0.5rem',
+      overflow: 'hidden',
+      backgroundColor: 'hsl(var(--background))',
+      border: '1px solid hsl(var(--border))',
+      boxShadow: '0 16px 40px rgba(0, 0, 0, 0.14)',
+    }),
+    option: (base, state) => ({
+      ...base,
+      backgroundColor: state.isSelected
+        ? 'hsl(var(--primary))'
+        : state.isFocused
+          ? 'hsl(var(--muted))'
+          : 'hsl(var(--background))',
+      color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: 'hsl(var(--foreground))',
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: 'hsl(var(--muted-foreground))',
+    }),
+    indicatorSeparator: (base) => ({
+      ...base,
+      backgroundColor: 'hsl(var(--border))',
+    }),
+  };
+}
+
+function approvalChannelLabel(channel: ApprovalChannel) {
+  switch (channel) {
+    case 'sms':
+      return 'SMS';
+    case 'whatsapp':
+      return 'WhatsApp';
+    default:
+      return 'Notification';
+  }
+}
+
 // --------------------------------------------------------------------------
 // Sub-components
 // --------------------------------------------------------------------------
@@ -134,6 +325,60 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${getStatusColor(status)}`}>
       {getStatusLabel(status)}
     </span>
+  );
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 transition-colors overflow-hidden ${
+        checked ? 'border-primary bg-primary/15' : 'border-border bg-background'
+      }`}
+    >
+      <span
+        className={`h-5 w-5 rounded-full shadow-sm transition-transform duration-200 ${
+          checked ? 'translate-x-5 bg-primary' : 'translate-x-0 bg-muted-foreground'
+        }`}
+      />
+    </button>
+  );
+}
+
+function ActionMenuItem({
+  icon: Icon,
+  label,
+  onClick,
+  destructive = false,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+        destructive ? 'text-destructive hover:bg-destructive/10' : 'text-foreground hover:bg-surface-alt'
+      }`}
+    >
+      {Icon ? <Icon className="h-4 w-4" /> : null}
+      {label}
+    </button>
   );
 }
 
@@ -237,9 +482,13 @@ export default function PurchaseOrders() {
     error,
     fetchPurchaseOrders,
     deletePurchaseOrder,
+    updatePurchaseOrder,
   } = usePurchaseOrders();
 
   const [activeTab, setActiveTab] = useState<'analytics' | 'list'>('list');
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState<FilterState>({
     locationId: 'all',
     supplierId: 'all',
@@ -249,9 +498,32 @@ export default function PurchaseOrders() {
     dateRange: { from: null, to: null },
     searchQuery: '',
   });
-  const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
-  const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<VisibleColumns>(DEFAULT_VISIBLE_COLUMNS);
+  const [actionMenuOpenFor, setActionMenuOpenFor] = useState<string | null>(null);
+  const [actionMenuPosition, setActionMenuPosition] = useState<ActionMenuState>(null);
+  const [activeOrder, setActiveOrder] = useState<PurchaseOrder | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const deliveryStatusModalOpen = Boolean(Math.random() > 2);
+  const deliveryStatusSaving = false;
+  const selectedDeliveryStatus: any = '';
+  const statusModalOrder: any = null;
+  const purchaseOrderDetailLoading = false;
+  const purchaseOrderDetail: any = null;
+  const approvalReminderChannels: any = {
+    notification: true,
+    sms: false,
+    whatsapp: false,
+  };
+  const approvalReminderMessage: any = '';
+  const selectedApprovalChannels: any = [];
+  const statusEffectMap: any = useMemo(() => buildStatusEffectMap(), []);
+  const setSelectedDeliveryStatus = (_value: PurchaseOrderStatus | '') => undefined;
+  const setApprovalReminderMessage = (_value: string) => undefined;
+  const toggleApprovalReminderChannel = (_channel: ApprovalChannel) => undefined;
+  const closeStatusModal = () => undefined;
+  const handleSaveStatus = async () => undefined;
 
   const currencyCode = businessSettings?.currency || 'USD';
   const currencyPrecision = typeof businessSettings?.currencyPrecision === 'number' ? businessSettings.currencyPrecision : 2;
@@ -260,6 +532,42 @@ export default function PurchaseOrders() {
   useEffect(() => {
     fetchPurchaseOrders();
   }, [fetchPurchaseOrders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, rowsPerPage]);
+
+  useEffect(() => {
+    if (!actionMenuOpenFor) {
+      return undefined;
+    }
+
+    const handleGlobalClose = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (actionMenuRef.current && target && actionMenuRef.current.contains(target)) {
+        return;
+      }
+      setActionMenuOpenFor(null);
+      setActionMenuPosition(null);
+      setActiveOrder(null);
+    };
+
+    const handleResizeOrScroll = () => {
+      setActionMenuOpenFor(null);
+      setActionMenuPosition(null);
+      setActiveOrder(null);
+    };
+
+    document.addEventListener('mousedown', handleGlobalClose);
+    window.addEventListener('resize', handleResizeOrScroll);
+    window.addEventListener('scroll', handleResizeOrScroll, true);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalClose);
+      window.removeEventListener('resize', handleResizeOrScroll);
+      window.removeEventListener('scroll', handleResizeOrScroll, true);
+    };
+  }, [actionMenuOpenFor]);
 
   // Filtered orders
   const filteredOrders = useMemo(() => {
@@ -305,12 +613,24 @@ export default function PurchaseOrders() {
     return orders;
   }, [purchaseOrders, filters]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / rowsPerPage));
+  const displayedOrders = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredOrders.slice(start, start + rowsPerPage);
+  }, [currentPage, filteredOrders, rowsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   // Analytics data
   const analytics = useMemo(() => {
     const totalOrders = purchaseOrders.length;
     const totalValue = purchaseOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-    const receivedOrders = purchaseOrders.filter((o) => o.status === 'received' || o.status === 'completed');
-    const pendingOrders = purchaseOrders.filter((o) => o.status === 'pending' || o.status === 'approved');
+    const receivedOrders = purchaseOrders.filter((o) => o.status === 'received' || o.status === 'completed' || o.status === 'closed');
+    const pendingOrders = purchaseOrders.filter((o) => o.status === 'pending' || o.status === 'pending_approval' || o.status === 'approved');
     const cancelledOrders = purchaseOrders.filter((o) => o.status === 'cancelled');
     const averageOrderValue = totalOrders > 0 ? totalValue / totalOrders : 0;
 
@@ -336,7 +656,7 @@ export default function PurchaseOrders() {
       }
       acc[order.supplierName].count++;
       acc[order.supplierName].value += order.totalAmount;
-      if (order.status === 'received' || order.status === 'completed') {
+      if (order.status === 'received' || order.status === 'completed' || order.status === 'closed') {
         acc[order.supplierName].received++;
       }
       return acc;
@@ -379,12 +699,89 @@ export default function PurchaseOrders() {
     }
   };
 
-  const handleExport = () => {
-    toast.success('Export started. Your file will be ready shortly.');
+  const handleResetColumns = () => {
+    setVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const getVisibleExportColumns = () => EXPORT_COLUMN_ORDER.filter((key) => visibleColumns[key]);
+
+  const buildExportQuery = () => {
+    const params = new URLSearchParams();
+
+    if (filters.locationId !== 'all') params.set('locationId', filters.locationId);
+    if (filters.supplierId !== 'all') params.set('supplierId', filters.supplierId);
+    if (filters.status !== 'all') params.set('status', filters.status);
+    if (filters.deliveryStatus !== 'all') params.set('deliveryStatus', filters.deliveryStatus);
+    if (filters.paymentStatus !== 'all') params.set('paymentStatus', filters.paymentStatus);
+    if (filters.searchQuery.trim()) params.set('searchQuery', filters.searchQuery.trim());
+    if (filters.dateRange.from) params.set('from', format(filters.dateRange.from, 'yyyy-MM-dd'));
+    if (filters.dateRange.to) params.set('to', format(filters.dateRange.to, 'yyyy-MM-dd'));
+
+    const columns = getVisibleExportColumns();
+    if (columns.length > 0) {
+      params.set('columns', columns.join(','));
+    }
+
+    return params.toString();
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadPurchaseOrdersExport = async (formatType: 'csv' | 'pdf') => {
+    try {
+      const query = buildExportQuery();
+      const { blob, filename } = await apiDownload(`/purchases/orders/export/${formatType}${query ? `?${query}` : ''}`);
+      downloadBlob(blob, filename ?? `purchase-orders.${formatType}`);
+      toast.success(`${formatType.toUpperCase()} export downloaded successfully`);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message || `Failed to export purchase orders`);
+      } else {
+        toast.error(`Failed to export purchase orders`);
+      }
+    }
+  };
+
+  const downloadPurchaseOrderPdf = async (order: PurchaseOrder, shouldPrint = false) => {
+    try {
+      const { blob } = await apiDownload(`/purchases/orders/${order.id}/export/pdf`);
+      if (!shouldPrint) {
+        downloadBlob(blob, `${order.referenceNumber || order.id}.pdf`);
+        toast.success('PDF downloaded successfully');
+        return;
+      }
+
+      const url = URL.createObjectURL(blob);
+      const viewer = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!viewer) {
+        downloadBlob(blob, `${order.referenceNumber || order.id}.pdf`);
+        return;
+      }
+      if (shouldPrint) {
+        window.setTimeout(() => {
+          try {
+            viewer.focus();
+            viewer.print();
+          } catch {
+            // The built-in PDF viewer may need an extra moment to load.
+          }
+        }, 700);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message || 'Failed to export purchase order');
+      } else {
+        toast.error('Failed to export purchase order');
+      }
+    }
   };
 
   const locationOptions = locations.map((loc) => ({
@@ -400,11 +797,14 @@ export default function PurchaseOrders() {
   const statusOptions: Array<{ value: PurchaseOrderStatus | 'all'; label: string }> = [
     { value: 'all', label: 'All Statuses' },
     { value: 'draft', label: 'Draft' },
+    { value: 'pending_approval', label: 'Pending Approval' },
     { value: 'pending', label: 'Pending' },
     { value: 'approved', label: 'Approved' },
+    { value: 'sent', label: 'Sent' },
     { value: 'ordered', label: 'Ordered' },
     { value: 'received', label: 'Received' },
     { value: 'partially_received', label: 'Partially Received' },
+    { value: 'closed', label: 'Closed' },
     { value: 'cancelled', label: 'Cancelled' },
     { value: 'completed', label: 'Completed' },
   ];
@@ -422,6 +822,58 @@ export default function PurchaseOrders() {
     { value: 'partially_paid', label: 'Partially Paid' },
     { value: 'paid', label: 'Paid' },
   ];
+
+  const openActionMenu = (order: PurchaseOrder, button: HTMLButtonElement) => {
+    const rect = button.getBoundingClientRect();
+    const menuHeight = 336;
+    const menuWidth = 256;
+    const gap = 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const placement: 'top' | 'bottom' = spaceBelow < menuHeight && spaceAbove > spaceBelow ? 'top' : 'bottom';
+    const top = placement === 'bottom' ? rect.bottom + gap : Math.max(rect.top - menuHeight - gap, gap);
+    const left = Math.min(Math.max(rect.right - menuWidth, gap), window.innerWidth - menuWidth - gap);
+
+    setActiveOrder(order);
+    setActionMenuPosition({ top, left, placement });
+    setActionMenuOpenFor(order.id);
+  };
+
+  const closeActionMenu = () => {
+    setActionMenuOpenFor(null);
+    setActionMenuPosition(null);
+    setActiveOrder(null);
+  };
+
+  const handleOrderAction = async (action: RowAction, order: PurchaseOrder) => {
+    closeActionMenu();
+
+    switch (action) {
+      case 'view':
+        navigate(`/purchases/orders/${order.id}/view`);
+        return;
+      case 'print':
+        await downloadPurchaseOrderPdf(order, true);
+        return;
+      case 'download-pdf':
+        await downloadPurchaseOrderPdf(order, false);
+        return;
+      case 'edit':
+        navigate(`/purchases/orders/${order.id}/edit`);
+        return;
+      case 'delete':
+        await handleDelete(order.id);
+        return;
+      case 'edit-delivery':
+        navigate(`/purchases/orders/${order.id}/update-status`);
+        return;
+      case 'send-notification':
+        toast.success(`Notification sent for ${order.referenceNumber}`);
+        return;
+      default:
+        return;
+    }
+  };
 
   if (error) {
     return (
@@ -442,7 +894,7 @@ export default function PurchaseOrders() {
   return (
     <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
+      <div className="sticky top-0 z-20 border-b border-border bg-background/95  py-4 backdrop-blur ">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3 sm:gap-4">
             <button
@@ -463,7 +915,7 @@ export default function PurchaseOrders() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => navigate('/purchases/orders/create')}
+              onClick={() => navigate('/purchases/list/create')}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
@@ -474,7 +926,7 @@ export default function PurchaseOrders() {
       </div>
 
       {/* Filters Card */}
-      <div className="px-4 sm:px-6">
+      <div className="">
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
             <button
@@ -549,7 +1001,7 @@ export default function PurchaseOrders() {
                 />
 
                 <FilterSelect
-                  label="Status"
+                  label="Order Status"
                   value={filters.status}
                   onChange={(value) => setFilters({ ...filters, status: value as PurchaseOrderStatus | 'all' })}
                   options={statusOptions}
@@ -593,16 +1045,6 @@ export default function PurchaseOrders() {
                   Showing <span className="font-medium text-foreground">{filteredOrders.length}</span> of{' '}
                   <span className="font-medium text-foreground">{purchaseOrders.length}</span> orders
                 </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleExport}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-alt"
-                  >
-                    <Download className="h-4 w-4" />
-                    Export
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -610,7 +1052,7 @@ export default function PurchaseOrders() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border px-4 sm:px-6">
+      <div className="border-b border-border">
         <div className="flex gap-1">
           <button
             onClick={() => setActiveTab('analytics')}
@@ -639,7 +1081,7 @@ export default function PurchaseOrders() {
       </div>
 
       {/* Tab Content */}
-      <div className="px-4 sm:px-6">
+      <div className="">
         {activeTab === 'analytics' ? (
           <div className="space-y-6">
             {/* Stats Row */}
@@ -744,7 +1186,7 @@ export default function PurchaseOrders() {
               </div>
 
               {/* Payment Status Breakdown */}
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-sm border border-border bg-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-foreground">Payment Status Breakdown</h3>
                 <div className="grid grid-cols-3 gap-4">
                   {Object.entries(analytics.paymentBreakdown).map(([status, count]) => {
@@ -767,7 +1209,7 @@ export default function PurchaseOrders() {
               </div>
 
               {/* Supplier Performance */}
-              <div className="rounded-xl border border-border bg-card p-5">
+              <div className="rounded-sm border border-border bg-card p-5">
                 <h3 className="mb-4 text-sm font-semibold text-foreground">Top Suppliers</h3>
                 <div className="space-y-4">
                   {Object.entries(analytics.supplierPerformance)
@@ -799,147 +1241,573 @@ export default function PurchaseOrders() {
             </div>
           </div>
         ) : (
-          // List Tab - Table
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {loading ? (
-              <div className="flex h-64 items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                  <p className="text-sm text-muted-foreground">Loading purchase orders...</p>
-                </div>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">All Orders</p>
+                <p className="text-xs text-muted-foreground">Choose which columns are visible, then export from the backend.</p>
               </div>
-            ) : filteredOrders.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16">
-                <Receipt className="h-12 w-12 text-muted-foreground" />
-                <h3 className="mt-4 text-sm font-medium text-foreground">No purchase orders found</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {purchaseOrders.length === 0
-                    ? 'Get started by creating your first purchase order'
-                    : 'Try adjusting your filters'}
-                </p>
-                {purchaseOrders.length === 0 && (
-                  <button
-                    onClick={() => navigate('/purchases/orders/create')}
-                    className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setColumnsOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+                >
+                  <Columns3 className="h-3.5 w-3.5" />
+                  Columns
+                </button>
+                {columnsOpen ? (
+                  <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
+                    onClick={() => setColumnsOpen(false)}
                   >
-                    <Plus className="mr-2 inline h-4 w-4" />
-                    Create Purchase Order
-                  </button>
-                )}
+                    <div
+                      className="flex h-full w-full max-h-[100dvh] flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl sm:h-auto sm:max-h-[80vh] sm:w-[80vw] sm:max-w-6xl sm:rounded-sm"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">Show columns</p>
+                          <p className="text-xs text-muted-foreground">Turn columns on or off for this table.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setColumnsOpen(false)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                          aria-label="Close column picker"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {COLUMN_OPTIONS.map((column) => (
+                            <div
+                              key={column.key}
+                              className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background px-3 py-3 text-sm text-foreground"
+                            >
+                              <span className="font-medium">{column.label}</span>
+                              <ToggleSwitch
+                                checked={visibleColumns[column.key]}
+                                onChange={() =>
+                                  setVisibleColumns((prev) => ({
+                                    ...prev,
+                                    [column.key]: !prev[column.key],
+                                  }))
+                                }
+                                ariaLabel={`Toggle ${column.label} column`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <p className="text-xs text-muted-foreground">Reset brings all columns back on.</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleResetColumns();
+                              setColumnsOpen(false);
+                            }}
+                            className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+                          >
+                            Turn all on
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setColumnsOpen(false)}
+                            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                          >
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-border">
-                  <thead className="bg-muted/30">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Reference No.
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Location
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Supplier
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Items
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Delivery Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Payment Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Added By
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-background">
-                    {filteredOrders.map((order) => (
-                      <tr key={order.id} className="hover:bg-muted/10 transition-colors">
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                          {format(new Date(order.orderDate), 'PPP')}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
-                          {order.referenceNumber}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                          {order.locationName}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
-                          {order.supplierName}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <StatusBadge status={order.status} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-foreground">
-                          {order.itemsCount || 0}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <StatusBadge status={order.deliveryStatus} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <StatusBadge status={order.paymentStatus} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
-                          {order.createdBy?.name || 'System'}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/purchases/orders/${order.id}`)}
-                              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                              aria-label="View order"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/purchases/orders/${order.id}/edit`)}
-                              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                              aria-label="Edit order"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(order.id)}
-                              disabled={isDeleting}
-                              className="rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                              aria-label="Delete order"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/purchases/orders/${order.id}/print`)}
-                              className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                              aria-label="Print order"
-                            >
-                              <Printer className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Entries
+                  <select
+                    value={rowsPerPage}
+                    onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                    className="ml-2 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {[10, 25, 50, 100].map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
                     ))}
-                  </tbody>
-                </table>
+                  </select>
+                </label>
               </div>
-            )}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadPurchaseOrdersExport('csv')}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadPurchaseOrdersExport('pdf')}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  PDF
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-sm border border-border bg-card overflow-hidden">
+              {loading ? (
+                <div className="flex h-64 items-center justify-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    <p className="text-sm text-muted-foreground">Loading purchase orders...</p>
+                  </div>
+                </div>
+              ) : filteredOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <Receipt className="h-12 w-12 text-muted-foreground" />
+                  <h3 className="mt-4 text-sm font-medium text-foreground">No purchase orders found</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {purchaseOrders.length === 0
+                      ? 'Get started by creating your first purchase order'
+                      : 'Try adjusting your filters'}
+                  </p>
+                  {purchaseOrders.length === 0 && (
+                    <button
+                      onClick={() => navigate('/purchases/list/create')}
+                      className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                    >
+                      <Plus className="mr-2 inline h-4 w-4" />
+                      Create Purchase Order
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-border">
+                      <thead className="bg-muted/30">
+                        <tr>
+                          {visibleColumns.orderDate && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Date
+                            </th>
+                          )}
+                          {visibleColumns.referenceNumber && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Reference No.
+                            </th>
+                          )}
+                          {visibleColumns.location && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Location
+                            </th>
+                          )}
+                          {visibleColumns.supplier && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Supplier
+                            </th>
+                          )}
+                          {visibleColumns.status && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Order Status
+                            </th>
+                          )}
+                          {visibleColumns.items && (
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Items
+                            </th>
+                          )}
+                          {visibleColumns.deliveryStatus && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Delivery Status
+                            </th>
+                          )}
+                          {visibleColumns.paymentStatus && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Payment Status
+                            </th>
+                          )}
+                          {visibleColumns.addedBy && (
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Added By
+                            </th>
+                          )}
+                          {visibleColumns.totalAmount && (
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Total Amount
+                            </th>
+                          )}
+                          <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border bg-background">
+                        {displayedOrders.map((order) => (
+                          <tr key={order.id} className="hover:bg-muted/10 transition-colors">
+                            {visibleColumns.orderDate && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {format(new Date(order.orderDate), 'PPP')}
+                              </td>
+                            )}
+                            {visibleColumns.referenceNumber && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-foreground">
+                                {order.referenceNumber}
+                              </td>
+                            )}
+                            {visibleColumns.location && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {order.locationName}
+                              </td>
+                            )}
+                            {visibleColumns.supplier && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
+                                {order.supplierName}
+                              </td>
+                            )}
+                            {visibleColumns.status && (
+                              <td className="whitespace-nowrap px-4 py-3">
+                                <StatusBadge status={order.status} />
+                              </td>
+                            )}
+                            {visibleColumns.items && (
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-foreground">
+                                {order.itemsCount || 0}
+                              </td>
+                            )}
+                            {visibleColumns.deliveryStatus && (
+                              <td className="whitespace-nowrap px-4 py-3">
+                                <StatusBadge status={order.deliveryStatus} />
+                              </td>
+                            )}
+                            {visibleColumns.paymentStatus && (
+                              <td className="whitespace-nowrap px-4 py-3">
+                                <StatusBadge status={order.paymentStatus} />
+                              </td>
+                            )}
+                            {visibleColumns.addedBy && (
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {order.createdBy?.name || 'System'}
+                              </td>
+                            )}
+                            {visibleColumns.totalAmount && (
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-foreground">
+                                {formatMoney(order.totalAmount, currencyCode, currencyPrecision, currencyPlacement)}
+                              </td>
+                            )}
+                            <td className="whitespace-nowrap px-4 py-3 text-right">
+                              <div className="relative flex items-center justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openActionMenu(order, event.currentTarget);
+                                  }}
+                                  className="rounded p-1.5 text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                                  aria-label="Open order actions"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                                {actionMenuOpenFor === order.id && actionMenuPosition && activeOrder?.id === order.id && (
+                                  <div
+                                    ref={actionMenuRef}
+                                    className="fixed z-50 w-64 rounded-xl border border-border bg-background p-2 shadow-2xl shadow-black/10"
+                                    style={{
+                                      top: actionMenuPosition.top,
+                                      left: actionMenuPosition.left,
+                                    }}
+                                  >
+                                    <div className="px-3 py-2">
+                                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Actions for</p>
+                                      <p className="truncate text-sm font-medium text-foreground">
+                                        {activeOrder?.referenceNumber ?? 'this order'}
+                                      </p>
+                                    </div>
+                                    <div className="divide-y divide-border p-1">
+                                      <ActionMenuItem
+                                        icon={Eye}
+                                        label="View"
+                                        onClick={() => handleOrderAction('view', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Printer}
+                                        label="Print"
+                                        onClick={() => handleOrderAction('print', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Download}
+                                        label="Download Pdf"
+                                        onClick={() => handleOrderAction('download-pdf', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Edit}
+                                        label="Edit"
+                                        onClick={() => handleOrderAction('edit', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Trash2}
+                                        label="Delete"
+                                        destructive
+                                        onClick={() => handleOrderAction('delete', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Truck}
+                                        label="Update Order Status"
+                                        onClick={() => handleOrderAction('edit-delivery', order)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={Bell}
+                                        label="Send Notification"
+                                        onClick={() => handleOrderAction('send-notification', order)}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+                    <p className="text-sm text-muted-foreground">
+                      Showing <span className="font-medium text-foreground">{Math.min((currentPage - 1) * rowsPerPage + 1, filteredOrders.length)}</span> to{' '}
+                      <span className="font-medium text-foreground">
+                        {Math.min(currentPage * rowsPerPage, filteredOrders.length)}
+                      </span>{' '}
+                      of <span className="font-medium text-foreground">{filteredOrders.length}</span> orders
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                        disabled={currentPage <= 1}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                        disabled={currentPage >= totalPages}
+                        className="rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {deliveryStatusModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 px-0 py-0 backdrop-blur-sm md:items-center md:px-4 md:py-6"
+          onClick={closeStatusModal}
+        >
+          <div
+            className="flex h-full min-h-0 w-full max-w-none flex-col overflow-hidden rounded-sm border border-border bg-card shadow-2xl md:h-[85vh] md:w-4/5 md:max-w-[80vw]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                  Update order status
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">
+                  {statusModalOrder?.referenceNumber ?? 'Purchase Order'}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Choose the new order status and save it to update the purchase order flow.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeStatusModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close status modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 py-5 lg:grid-cols-[1fr_1.1fr]">
+              <div className="space-y-4">
+                <div className="p-4  transition-all duration-200">
+                  <label className="mb-2 block text-sm font-medium text-foreground">Order Status</label>
+                  <Select
+                    value={
+                      ORDER_STATUS_OPTIONS.find((option) => option.value === selectedDeliveryStatus) ?? null
+                    }
+                    onChange={(option) => setSelectedDeliveryStatus((option?.value ?? '') as PurchaseOrderStatus | '')}
+                    options={ORDER_STATUS_OPTIONS}
+                    placeholder="Select status"
+                    isSearchable={false}
+                    styles={purchaseOrderStatusSelectStyles()}
+                    classNamePrefix="react-select"
+                  />
+                  {selectedDeliveryStatus ? (
+                    <div className="mt-3   transition-all duration-200">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-primary">Status meaning</p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {statusEffectMap[selectedDeliveryStatus]?.meaning ?? 'Status information not available.'}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className=" p-4 transition-all duration-200">
+                  <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
+                  {purchaseOrderDetailLoading && !purchaseOrderDetail ? (
+                    <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Loading purchase order details...
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Reference</span>
+                        <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.referenceNumber ?? statusModalOrder?.referenceNumber ?? '-'}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Supplier</span>
+                        <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.supplierName ?? statusModalOrder?.supplierName ?? '-'}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Current Status</span>
+                        <StatusBadge status={purchaseOrderDetail?.purchaseOrder.status ?? statusModalOrder?.status ?? 'draft'} />
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-muted-foreground">Total</span>
+                        <span className="text-right font-medium text-foreground">
+                          {`${purchaseOrderDetail?.purchaseOrder.itemsCount ?? statusModalOrder?.itemsCount ?? 0} item${(purchaseOrderDetail?.purchaseOrder.itemsCount ?? statusModalOrder?.itemsCount ?? 0) === 1 ? '' : 's'} · ${formatMoney(
+                            purchaseOrderDetail?.purchaseOrder.totalAmount ?? statusModalOrder?.totalAmount ?? 0,
+                            currencyCode,
+                            currencyPrecision,
+                            currencyPlacement,
+                          )}`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {selectedDeliveryStatus === 'pending_approval' ? (
+                <div className=" bg-transparent p-4 transition-all duration-200 lg:col-span-2">
+                  <div className="flex flex-col gap-2  pb-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+                        Approval Reminder
+                      </p>
+                      <h4 className="mt-1 text-base font-semibold ">
+                        Choose one or more channels for this approval request.
+                      </h4>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        The reminder will be queued for every channel you switch on below.
+                      </p>
+                    </div>
+                    <div className="inline-flex items-center rounded-full border border-amber-200 bg-background px-3 py-1 text-xs font-medium text-amber-800">
+                      {selectedApprovalChannels.length} channel{selectedApprovalChannels.length === 1 ? '' : 's'} selected
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    {(['notification', 'sms', 'whatsapp'] as ApprovalChannel[]).map((channel) => {
+                      const checked = approvalReminderChannels[channel];
+
+                      return (
+                        <div
+                          key={channel}
+                          className={`flex items-center justify-between gap-4 border px-4 py-3 transition-all duration-200 ${
+                            checked
+                              ? 'border-primary bg-background shadow-sm'
+                              : 'border-primary/70 bg-transparent'
+                          }`}
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{approvalChannelLabel(channel)}</p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {channel === 'notification'
+                                ? 'In-app alert'
+                                : channel === 'sms'
+                                  ? 'Text message'
+                                  : 'WhatsApp message'}
+                            </p>
+                          </div>
+                          <ToggleSwitch
+                            checked={checked}
+                            onChange={() => toggleApprovalReminderChannel(channel)}
+                            ariaLabel={`${approvalChannelLabel(channel)} approval reminder`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      Reminder Message
+                    </label>
+                    <textarea
+                      value={approvalReminderMessage}
+                      onChange={(event) => setApprovalReminderMessage(event.target.value)}
+                      rows={4}
+                      className="w-full rounded-sm border border-primary bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="Type the message that should be sent with this approval reminder..."
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted-foreground">
+                Changing the order status can affect stock movement, supplier billing, and downstream approval steps.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeStatusModal}
+                  className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSaveStatus()}
+                  disabled={deliveryStatusSaving || purchaseOrderDetailLoading}
+                  className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deliveryStatusSaving ? 'Saving...' : 'Save Status'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
