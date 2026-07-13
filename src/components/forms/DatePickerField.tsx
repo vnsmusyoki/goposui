@@ -28,7 +28,6 @@ export default function DatePickerField({
   maxDate,
   className = '',
   error = false,
-  usePortal = false,
 }: DatePickerFieldProps) {
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
 
@@ -42,10 +41,10 @@ export default function DatePickerField({
         placeholderText={placeholder}
         minDate={minDate}
         maxDate={maxDate}
-        withPortal={usePortal}
-        popperPlacement={usePortal ? 'top-start' : 'bottom-start'}
-        popperClassName="z-[9999]"
+        popperPlacement="bottom-start"
+        popperClassName="z-50"
         showPopperArrow={false}
+        shouldCloseOnSelect
         className={`w-full rounded-lg border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20 ${
           error ? 'border-destructive' : 'border-border'
         }`}

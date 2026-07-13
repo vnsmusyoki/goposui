@@ -22,6 +22,7 @@ export type PurchaseOrderDetailItem = {
   manufactureDate: string;
   expiryDate: string;
   lotNumber: string;
+  currentStock: number;
   receivedQuantity?: number | null;
   balanceQuantity: number;
   itemsReceived: number;
@@ -148,6 +149,8 @@ function normalizeDetail(response: PurchaseOrderDetailResponse): PurchaseOrderDe
       sellingPrice: normalizeNumber(item.sellingPrice),
       lineCost: normalizeNumber(item.lineCost),
       manufactureDate: item.manufactureDate || '',
+      lotNumber: item.lotNumber || '',
+      currentStock: normalizeNumber(item.currentStock),
       receivedQuantity: item.receivedQuantity === null || item.receivedQuantity === undefined ? null : normalizeNumber(item.receivedQuantity),
       balanceQuantity: normalizeNumber(item.balanceQuantity),
       itemsReceived: normalizeNumber(item.itemsReceived),

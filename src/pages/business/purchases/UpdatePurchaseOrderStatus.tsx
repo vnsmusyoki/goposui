@@ -31,9 +31,11 @@ type ReceivingRow = {
   manufactureDate: string;
   expiryDate: string;
   lotNumber: string;
+  currentStock: number;
+  unitCostBeforeDiscount: number;
+  discountPercentage: number;
   unitCostBeforeTax: number;
-  sellingPrice: number;
-  productTaxRate: number;
+  unitCostAfterTax: number;
 };
 
 function formatMoney(amount: number, currencyCode: string, precision: number, placement: 'before' | 'after') {
@@ -134,22 +136,45 @@ function purchaseOrderStatusSelectStyles(): StylesConfig<SelectOption, false> {
     control: (base, state) => ({
       ...base,
       minHeight: '42px',
-      borderRadius: '0.5rem',
+      borderRadius: '0.125rem',
       borderColor: state.isFocused ? 'hsl(var(--primary))' : 'hsl(var(--border))',
       backgroundColor: 'hsl(var(--background))',
       boxShadow: state.isFocused ? '0 0 0 1px hsl(var(--primary))' : 'none',
+      paddingLeft: '0.25rem',
       '&:hover': {
         borderColor: state.isFocused ? 'hsl(var(--primary))' : 'hsl(var(--border))',
       },
     }),
+    valueContainer: (base) => ({
+      ...base,
+      padding: '0.25rem 0.5rem',
+    }),
+    input: (base) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      color: 'hsl(var(--foreground))',
+    }),
+    singleValue: (base) => ({
+      ...base,
+      color: 'hsl(var(--foreground))',
+    }),
+    placeholder: (base) => ({
+      ...base,
+      color: 'hsl(var(--muted-foreground))',
+    }),
     menu: (base) => ({
       ...base,
-      zIndex: 60,
-      borderRadius: '0.5rem',
+      zIndex: 50,
+      borderRadius: '0.125rem',
       overflow: 'hidden',
       backgroundColor: 'hsl(var(--background))',
       border: '1px solid hsl(var(--border))',
-      boxShadow: '0 16px 40px rgba(0, 0, 0, 0.14)',
+      boxShadow: '0 12px 30px rgba(0, 0, 0, 0.12)',
+    }),
+    menuPortal: (base) => ({
+      ...base,
+      zIndex: 1000,
     }),
     option: (base, state) => ({
       ...base,
@@ -160,17 +185,16 @@ function purchaseOrderStatusSelectStyles(): StylesConfig<SelectOption, false> {
           : 'hsl(var(--background))',
       color: state.isSelected ? 'hsl(var(--primary-foreground))' : 'hsl(var(--foreground))',
     }),
-    singleValue: (base) => ({
-      ...base,
-      color: 'hsl(var(--foreground))',
-    }),
-    placeholder: (base) => ({
-      ...base,
-      color: 'hsl(var(--muted-foreground))',
-    }),
     indicatorSeparator: (base) => ({
       ...base,
       backgroundColor: 'hsl(var(--border))',
+    }),
+    dropdownIndicator: (base) => ({
+      ...base,
+      color: 'hsl(var(--muted-foreground))',
+      ':hover': {
+        color: 'hsl(var(--foreground))',
+      },
     }),
   };
 }
@@ -199,6 +223,51 @@ function splitReceiverInput(value: string): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function parseEditableNumberInput(raw: string, options: { min?: number; max?: number } = {}) {
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+    return Math.max(options.min ?? 0, 0);
+  }
+
+  const cleaned = trimmed.replace(/[^0-9.]/g, '');
+  const [integerPartRaw = '', ...decimalParts] = cleaned.split('.');
+  const decimalPart = decimalParts.join('').replace(/[^0-9]/g, '');
+  const integerPart = integerPartRaw.replace(/^0+(?=\d)/, '') || '0';
+  const normalized = cleaned.includes('.') ? `${integerPart}.${decimalPart}` : integerPart;
+  let value = Number(normalized);
+
+  if (!Number.isFinite(value)) {
+    value = Math.max(options.min ?? 0, 0);
+  }
+
+  if (typeof options.min === 'number') {
+    value = Math.max(options.min, value);
+  } else {
+    value = Math.max(0, value);
+  }
+
+  if (typeof options.max === 'number') {
+    value = Math.min(options.max, value);
+  }
+
+  return value;
+}
+
+function formatEditableNumberInput(value: number) {
+  return value === 0 ? '' : String(value);
+}
+
+function getLocalDateStart(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function parseLocalDateInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function normalizePhoneNumbers(values: string[]): string[] {
@@ -232,6 +301,10 @@ function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
     const receivedQuantity = Number(item.receivedQuantity ?? 0);
     const orderQuantity = Number(item.orderQuantity ?? 0);
     const balanceQuantity = Math.max(Number(item.balanceQuantity ?? orderQuantity - receivedQuantity), 0);
+    const unitCostBeforeDiscount = Number(item.unitCostBeforeDiscount ?? 0);
+    const discountPercentage = Number(item.discountPercentage ?? 0);
+    const unitCostBeforeTax = Number(item.unitCostBeforeTax ?? 0);
+    const unitCostAfterTax = Number(item.netCost ?? unitCostBeforeTax);
 
     return {
       id: item.id,
@@ -244,11 +317,29 @@ function buildReceivingRows(items: PurchaseOrderDetailItem[]): ReceivingRow[] {
       manufactureDate: item.manufactureDate || '',
       expiryDate: item.expiryDate || '',
       lotNumber: item.lotNumber || '',
-      unitCostBeforeTax: Number(item.unitCostBeforeTax ?? 0),
-      sellingPrice: Number(item.sellingPrice ?? 0),
-      productTaxRate: Number(item.productTaxRate ?? 0),
+      currentStock: Number(item.currentStock ?? 0),
+      unitCostBeforeDiscount,
+      discountPercentage,
+      unitCostBeforeTax,
+      unitCostAfterTax,
     };
   });
+}
+
+function getDiscountAmount(row: ReceivingRow) {
+  return Math.max(0, row.unitCostBeforeDiscount - row.unitCostBeforeTax);
+}
+
+function getSubtotalBeforeTax(row: ReceivingRow) {
+  return Math.max(0, row.unitCostBeforeTax * row.orderQuantity);
+}
+
+function getTaxAmount(row: ReceivingRow) {
+  return Math.max(0, row.unitCostAfterTax - row.unitCostBeforeTax);
+}
+
+function getSubtotalAfterTax(row: ReceivingRow) {
+  return Math.max(0, row.unitCostAfterTax * row.orderQuantity);
 }
 
 function getStatusDefinition(statuses: PurchaseOrderStatusDefinition[], selectedStatus: string) {
@@ -291,6 +382,7 @@ export default function UpdatePurchaseOrderStatus() {
   const showExpiryDate = Boolean(productSettings?.enableProductExpiry);
   const showLotNumber = Boolean(purchasesSettings?.enableLotNumber);
   const showReceivingGrid = isReceivingStatus(selectedStatus);
+  const today = useMemo(() => getLocalDateStart(), []);
 
   useEffect(() => {
     if (!id) return;
@@ -337,6 +429,48 @@ export default function UpdatePurchaseOrderStatus() {
             [field]: String(value),
           } as ReceivingRow;
         }
+        if (field === 'unitCostBeforeDiscount') {
+          const nextUnitCostBeforeDiscount = Math.max(0, Number(value) || 0);
+          const nextUnitCostBeforeTax = Math.min(nextUnitCostBeforeDiscount, row.unitCostBeforeTax > 0 ? row.unitCostBeforeTax : nextUnitCostBeforeDiscount);
+          const nextUnitCostAfterTax = Math.max(nextUnitCostBeforeTax, row.unitCostAfterTax);
+          return {
+            ...row,
+            unitCostBeforeDiscount: nextUnitCostBeforeDiscount,
+            unitCostBeforeTax: nextUnitCostBeforeTax,
+            unitCostAfterTax: nextUnitCostAfterTax,
+          };
+        }
+        if (field === 'discountPercentage') {
+          const nextDiscountPercentage = Math.max(0, Math.min(100, Number(value) || 0));
+          const nextDiscountAmount = (row.unitCostBeforeDiscount * nextDiscountPercentage) / 100;
+          const nextUnitCostBeforeTax = Math.max(0, row.unitCostBeforeDiscount - nextDiscountAmount);
+          const nextUnitCostAfterTax = Math.max(nextUnitCostBeforeTax, row.unitCostAfterTax);
+          return {
+            ...row,
+            discountPercentage: nextDiscountPercentage,
+            unitCostBeforeTax: nextUnitCostBeforeTax,
+            unitCostAfterTax: nextUnitCostAfterTax,
+          };
+        }
+        if (field === 'unitCostBeforeTax') {
+          const nextUnitCostBeforeTax = Math.max(0, Number(value) || 0);
+          const nextDiscountAmount = Math.max(0, row.unitCostBeforeDiscount - nextUnitCostBeforeTax);
+          const nextDiscountPercentage = row.unitCostBeforeDiscount > 0 ? Math.min(100, (nextDiscountAmount / row.unitCostBeforeDiscount) * 100) : 0;
+          const nextUnitCostAfterTax = Math.max(nextUnitCostBeforeTax, row.unitCostAfterTax);
+          return {
+            ...row,
+            discountPercentage: nextDiscountPercentage,
+            unitCostBeforeTax: nextUnitCostBeforeTax,
+            unitCostAfterTax: nextUnitCostAfterTax,
+          };
+        }
+        if (field === 'unitCostAfterTax') {
+          const nextUnitCostAfterTax = Math.max(0, Number(value) || 0);
+          return {
+            ...row,
+            unitCostAfterTax: Math.max(nextUnitCostAfterTax, row.unitCostBeforeTax),
+          };
+        }
         return row;
       }),
     );
@@ -365,6 +499,18 @@ export default function UpdatePurchaseOrderStatus() {
       const invalidRow = receivingRows.find((row) => row.receivedQuantity < 0 || row.receivedQuantity > row.orderQuantity);
       if (invalidRow) {
         return `Received quantity for ${invalidRow.productName} must be between 0 and the ordered quantity.`;
+      }
+
+      const invalidDateRow = receivingRows.find((row) => {
+        if (!row.manufactureDate || !row.expiryDate) return false;
+        const manufactureDate = parseLocalDateInput(row.manufactureDate);
+        const expiryDate = parseLocalDateInput(row.expiryDate);
+        if (!manufactureDate || !expiryDate) return false;
+        return manufactureDate.getTime() >= expiryDate.getTime();
+      });
+
+      if (invalidDateRow) {
+        return `Manufacture date for ${invalidDateRow.productName} must be earlier than the expiry date.`;
       }
     }
 
@@ -411,15 +557,19 @@ export default function UpdatePurchaseOrderStatus() {
         items: receivingRows.map((row) => ({
           productId: detailItems.find((item) => item.id === row.id)?.productId ?? '',
           orderQuantity: Number(row.orderQuantity ?? 0),
-          unitCostBeforeDiscount: Number(detailItems.find((item) => item.id === row.id)?.unitCostBeforeDiscount ?? 0),
-          discountPercentage: Number(detailItems.find((item) => item.id === row.id)?.discountPercentage ?? 0),
-          discountAmount: Number(detailItems.find((item) => item.id === row.id)?.discountAmount ?? 0),
+          unitCostBeforeDiscount: Number(row.unitCostBeforeDiscount ?? 0),
+          discountPercentage: Number(row.discountPercentage ?? 0),
+          discountAmount: Number(getDiscountAmount(row)),
           unitCostBeforeTax: Number(row.unitCostBeforeTax ?? 0),
-          productTaxRate: Number(row.productTaxRate ?? 0),
-          taxAmount: Number(detailItems.find((item) => item.id === row.id)?.taxAmount ?? 0),
-          netCost: Number(detailItems.find((item) => item.id === row.id)?.netCost ?? 0),
-          sellingPrice: Number(row.sellingPrice ?? 0),
-          lineCost: Number(detailItems.find((item) => item.id === row.id)?.lineCost ?? 0),
+          productTaxRate: Number(
+            row.unitCostAfterTax > row.unitCostBeforeTax && row.unitCostBeforeTax > 0
+              ? ((row.unitCostAfterTax - row.unitCostBeforeTax) / row.unitCostBeforeTax) * 100
+              : 0,
+          ),
+          taxAmount: Number(getTaxAmount(row)),
+          netCost: Number(row.unitCostAfterTax ?? 0),
+          sellingPrice: Number(row.unitCostAfterTax ?? 0),
+          lineCost: Number(getSubtotalAfterTax(row)),
           manufactureDate: row.manufactureDate || '',
           expiryDate: row.expiryDate || '',
           lotNumber: row.lotNumber || '',
@@ -500,240 +650,353 @@ export default function UpdatePurchaseOrderStatus() {
             </div>
           </div>
 
-          <div className="grid gap-5 px-5 py-5 lg:grid-cols-[1fr_1.1fr]">
-            <div className="space-y-4">
-              <div className=" bg-background p-4">
-                <label className="mb-2 block text-sm font-medium text-foreground">Order Status</label>
-                <Select
-                  value={statusOptions.find((option) => option.value === selectedStatus) ?? null}
-                  onChange={(option) => setSelectedStatus(option?.value ?? '')}
-                  options={statusOptions}
-                  placeholder={statusesLoading ? 'Loading statuses...' : 'Select status'}
-                  isSearchable={false}
-                  styles={purchaseOrderStatusSelectStyles()}
-                  classNamePrefix="react-select"
-                />
+          <div className="px-5 py-5">
+            <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
+              <div className="space-y-4">
+                <div className="bg-background p-4">
+                  <label className="mb-2 block text-sm font-medium text-foreground">Order Status</label>
+                  <Select
+                    instanceId="purchase-order-status"
+                    value={statusOptions.find((option) => option.value === selectedStatus) ?? null}
+                    onChange={(option) => setSelectedStatus(option?.value ?? '')}
+                    options={statusOptions}
+                    placeholder={statusesLoading ? 'Loading statuses...' : 'Select status'}
+                    isSearchable
+                    menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                    menuPosition="fixed"
+                    menuShouldScrollIntoView={false}
+                    styles={purchaseOrderStatusSelectStyles()}
+                    classNamePrefix="react-select"
+                  />
 
-                {selectedStatus ? (
-                  <div className="mt-3 border border-border bg-background p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary">What this status does</p>
-                    <p className="mt-1 text-sm text-foreground">
-                      {statusDefinition?.whatHappens || 'Status information not available.'}
-                    </p>
-                     
-                  </div>
-                ) : null}
-              </div>
-
-             
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-background p-4 ">
-                <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
-                {purchaseOrderDetailLoading && !purchaseOrderDetail ? (
-                  <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    Loading purchase order details...
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Reference</span>
-                      <span className="font-medium text-foreground">{detail?.referenceNumber ?? '-'}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Supplier</span>
-                      <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.supplierName ?? '-'}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Current Status</span>
-                      <StatusBadge status={detail?.status ?? 'draft'} />
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-muted-foreground">Total</span>
-                      <span className="text-right font-medium text-foreground">{currentTotalLabel}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {showReceivingGrid ? (
-                <div className="bg-background p-4 ">
-                  <div className="flex flex-col gap-1 border-b  pb-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Received Items</p>
-                      <p className="text-xs text-muted-foreground">
-                        Enter what arrived for each product. Remaining quantity is calculated automatically and never goes below zero.
-                      </p>
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-alt px-3 py-1 text-xs font-medium text-muted-foreground">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                      {receivingRows.length} product{receivingRows.length === 1 ? '' : 's'}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="min-w-full border-collapse text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                          <th className="px-3 py-3 font-semibold">Product</th>
-                          <th className="px-3 py-3 font-semibold">SKU</th>
-                          <th className="px-3 py-3 font-semibold">Ordered</th>
-                          <th className="px-3 py-3 font-semibold">Received</th>
-                          <th className="px-3 py-3 font-semibold">Remaining</th>
-                          {showManufactureDate ? <th className="px-3 py-3 font-semibold">Manufacture Date</th> : null}
-                          {showExpiryDate ? <th className="px-3 py-3 font-semibold">Expiry Date</th> : null}
-                          {showLotNumber ? <th className="px-3 py-3 font-semibold">Lot Number</th> : null}
-                          <th className="px-3 py-3 font-semibold">Cost Price</th>
-                          <th className="px-3 py-3 font-semibold">Selling Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {receivingRows.map((row) => {
-                          const remaining = Math.max(row.orderQuantity - row.receivedQuantity, 0);
-                          return (
-                            <tr key={row.id} className="border-b border-border/70 last:border-b-0">
-                              <td className="px-3 py-3">
-                                <div>
-                                  <p className="font-medium text-foreground">{row.productName}</p>
-                                  <p className="text-xs text-muted-foreground">{row.unit || 'Unit not set'}</p>
-                                </div>
-                              </td>
-                              <td className="px-3 py-3 font-mono text-xs text-muted-foreground">{row.sku || '—'}</td>
-                              <td className="px-3 py-3 text-foreground">{row.orderQuantity}</td>
-                              <td className="px-3 py-3">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={row.orderQuantity}
-                                  step="0.01"
-                                  value={row.receivedQuantity}
-                                  onChange={(event) => updateReceivingRow(row.id, 'receivedQuantity', Number(event.target.value || 0))}
-                                  className="w-28 border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                                />
-                              </td>
-                              <td className="px-3 py-3 font-semibold text-foreground">{remaining}</td>
-                              {showManufactureDate ? (
-                                <td className="px-3 py-3 min-w-[170px]">
-                                  <DatePickerField
-                                    value={row.manufactureDate}
-                                    onChange={(value) => updateReceivingRow(row.id, 'manufactureDate', value)}
-                                    placeholder="Select date"
-                                  />
-                                </td>
-                              ) : null}
-                              {showExpiryDate ? (
-                                <td className="px-3 py-3 min-w-[170px]">
-                                  <DatePickerField
-                                    value={row.expiryDate}
-                                    onChange={(value) => updateReceivingRow(row.id, 'expiryDate', value)}
-                                    placeholder="Select date"
-                                  />
-                                </td>
-                              ) : null}
-                              {showLotNumber ? (
-                                <td className="px-3 py-3">
-                                  <input
-                                    type="text"
-                                    value={row.lotNumber}
-                                    onChange={(event) => updateReceivingRow(row.id, 'lotNumber', event.target.value)}
-                                    className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-                                    placeholder="Lot number"
-                                  />
-                                </td>
-                              ) : null}
-                              <td className="px-3 py-3 text-foreground">
-                                {formatMoney(row.unitCostBeforeTax, currencyCode, currencyPrecision, currencyPlacement)}
-                              </td>
-                              <td className="px-3 py-3 text-foreground">
-                                {formatMoney(row.sellingPrice, currencyCode, currencyPrecision, currencyPlacement)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-              {selectedStatus === 'pending_approval' ? (
-                <div className="bg-background p-4  lg:col-span-2">
-                  <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-foreground">Approval Reminder</p>
-                      <h4 className="mt-1 text-base font-semibold text-foreground">
-                        Choose the channels you want to use for this approval request.
-                      </h4>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        In-app reminders go to the notifications table. SMS and WhatsApp also store the recipient numbers and message.
-                      </p>
-                    </div>
-                    <div className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-                      {approvalChannelsSelected.length} channel{approvalChannelsSelected.length === 1 ? '' : 's'} selected
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    {(['notification', 'sms', 'whatsapp'] as ApprovalChannel[]).map((channel) => {
-                      const checked = approvalReminderChannels[channel];
-                      return (
-                        <div
-                          key={channel}
-                          className={`flex items-center justify-between gap-4 border px-4 py-3 transition-all duration-200 ${
-                            checked ? 'border-border bg-background shadow-sm' : 'border-border bg-transparent'
-                          }`}
-                        >
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{approvalChannelLabel(channel)}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              {channel === 'notification' ? 'In-app alert' : channel === 'sms' ? 'Text message' : 'WhatsApp message'}
-                            </p>
-                          </div>
-                          <ToggleSwitch
-                            checked={checked}
-                            onChange={() => toggleApprovalReminderChannel(channel)}
-                            ariaLabel={`${approvalChannelLabel(channel)} approval reminder`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {showReceiverInput ? (
-                    <div className="mt-4">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">
-                        Receiver Phone Numbers
-                      </label>
-                      <input
-                        value={approvalReminderReceiversText}
-                        onChange={(event) => setApprovalReminderReceiversText(event.target.value)}
-                        className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
-                        placeholder="e.g. 0712345678, 0798765432"
-                      />
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Use commas to separate multiple phone numbers. Each number must start with 0 and be exactly 10 digits.
+                  {selectedStatus ? (
+                    <div className="mt-3 border border-border bg-background p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-primary">What this status does</p>
+                      <p className="mt-1 text-sm text-foreground">
+                        {statusDefinition?.whatHappens || 'Status information not available.'}
                       </p>
                     </div>
                   ) : null}
+                </div>
+              </div>
 
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">Reminder Message</label>
-                    <textarea
-                      value={approvalReminderMessage}
-                      onChange={(event) => setApprovalReminderMessage(event.target.value)}
-                      rows={4}
-                      className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
-                      placeholder="Type the message that should be sent with this approval reminder..."
-                    />
+              <div className="space-y-4">
+                <div className="bg-background p-4">
+                  <p className="text-sm font-semibold text-foreground">Current Order Snapshot</p>
+                  {purchaseOrderDetailLoading && !purchaseOrderDetail ? (
+                    <div className="mt-4 flex items-center gap-3 text-sm text-muted-foreground">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Loading purchase order details...
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Reference</span>
+                        <span className="font-medium text-foreground">{detail?.referenceNumber ?? '-'}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Supplier</span>
+                        <span className="font-medium text-foreground">{purchaseOrderDetail?.purchaseOrder.supplierName ?? '-'}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Current Status</span>
+                        <StatusBadge status={detail?.status ?? 'draft'} />
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-muted-foreground">Total</span>
+                        <span className="text-right font-medium text-foreground">{currentTotalLabel}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {showReceivingGrid ? (
+            <div className="border-t border-border px-5 py-5">
+              <div className="border border-border bg-background p-4 shadow-sm">
+                <div className="flex flex-col gap-1 border-b border-border pb-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Received Items</p>
+                    <p className="text-xs text-muted-foreground">
+                      Enter what arrived for each product. Remaining quantity is calculated automatically and never goes below zero.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-alt px-3 py-1 text-xs font-medium text-muted-foreground">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                    {receivingRows.length} product{receivingRows.length === 1 ? '' : 's'}
                   </div>
                 </div>
-              ) : null}
 
-            {selectedStatus === 'pending_approval' ? (
-              <div className="border border-border bg-background p-4 shadow-sm lg:col-span-2">
+                <div className="mt-4 space-y-4">
+                  {receivingRows.map((row) => {
+                    const balance = Math.min(Math.max(row.orderQuantity - row.receivedQuantity, 0), row.orderQuantity);
+                    const subtotalBeforeTax = getSubtotalBeforeTax(row);
+                    const taxAmount = getTaxAmount(row);
+                    const subtotalAfterTax = getSubtotalAfterTax(row);
+                    return (
+                      <div key={row.id} className="border border-border bg-background p-4 shadow-sm">
+                        <div className="border-b border-border pb-4">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground">{row.productName}</p>
+                              {showLotNumber ? (
+                                <span className="rounded-full border border-border bg-surface-alt px-2 py-0.5 text-xs text-muted-foreground">
+                                  Lot: {row.lotNumber || 'Not set'}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{row.unit || 'Unit not set'}</span>
+                              <span>SKU: {row.sku || '—'}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:grid-cols-3 lg:grid-cols-4">
+                              <span>
+                                Ordered: <span className="font-medium text-foreground">{row.orderQuantity}</span>
+                              </span>
+                              <span>
+                                Current Stock: <span className="font-medium text-foreground">{Math.max(0, row.currentStock)}</span>
+                              </span>
+                              <span>
+                                Balance: <span className="font-medium text-foreground">{balance}</span>
+                              </span>
+                              <span>
+                                Subtotal Before Tax:{' '}
+                                <span className="font-medium text-foreground">
+                                  {formatMoney(subtotalBeforeTax, currencyCode, currencyPrecision, currencyPlacement)}
+                                </span>
+                              </span>
+                              <span>
+                                Tax:{' '}
+                                <span className="font-medium text-foreground">
+                                  {formatMoney(taxAmount, currencyCode, currencyPrecision, currencyPlacement)}
+                                </span>
+                              </span>
+                              <span>
+                                Subtotal:{' '}
+                                <span className="font-medium text-foreground">
+                                  {formatMoney(subtotalAfterTax, currencyCode, currencyPrecision, currencyPlacement)}
+                                </span>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Received Count
+                            </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={row.orderQuantity}
+                                step="0.01"
+                                value={formatEditableNumberInput(row.receivedQuantity)}
+                                onChange={(event) =>
+                                  updateReceivingRow(
+                                    row.id,
+                                    'receivedQuantity',
+                                    parseEditableNumberInput(event.target.value, { min: 0, max: row.orderQuantity }),
+                                  )
+                                }
+                                inputMode="decimal"
+                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Unit Cost Before Discount
+                            </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={formatEditableNumberInput(row.unitCostBeforeDiscount)}
+                                onChange={(event) =>
+                                  updateReceivingRow(
+                                    row.id,
+                                    'unitCostBeforeDiscount',
+                                    parseEditableNumberInput(event.target.value, { min: 0 }),
+                                  )
+                                }
+                                inputMode="decimal"
+                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Discount Percentage
+                            </label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.01"
+                                value={formatEditableNumberInput(row.discountPercentage)}
+                                onChange={(event) =>
+                                  updateReceivingRow(
+                                    row.id,
+                                    'discountPercentage',
+                                    parseEditableNumberInput(event.target.value, { min: 0, max: 100 }),
+                                  )
+                                }
+                                inputMode="decimal"
+                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Unit Cost Before Tax
+                            </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={formatEditableNumberInput(row.unitCostBeforeTax)}
+                                onChange={(event) =>
+                                  updateReceivingRow(row.id, 'unitCostBeforeTax', parseEditableNumberInput(event.target.value, { min: 0 }))
+                                }
+                                inputMode="decimal"
+                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Unit Cost After Tax
+                            </label>
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={formatEditableNumberInput(row.unitCostAfterTax)}
+                                onChange={(event) =>
+                                  updateReceivingRow(row.id, 'unitCostAfterTax', parseEditableNumberInput(event.target.value, { min: 0 }))
+                                }
+                                inputMode="decimal"
+                                className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                              />
+                            </div>
+
+                          {showManufactureDate ? (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Manufacture Date
+                              </label>
+                              <DatePickerField
+                                value={row.manufactureDate}
+                                onChange={(value) => updateReceivingRow(row.id, 'manufactureDate', value)}
+                                placeholder="Select date"
+                                maxDate={today}
+                              />
+                            </div>
+                          ) : null}
+
+                          {showExpiryDate ? (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Expiry Date
+                              </label>
+                              <DatePickerField
+                                value={row.expiryDate}
+                                onChange={(value) => updateReceivingRow(row.id, 'expiryDate', value)}
+                                placeholder="Select date"
+                                minDate={today}
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selectedStatus === 'pending_approval' ? (
+            <div className="border-t border-border px-5 py-5">
+              <div className="bg-background p-4 ">
+                <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-foreground">Approval Reminder</p>
+                    <h4 className="mt-1 text-base font-semibold text-foreground">
+                      Choose the channels you want to use for this approval request.
+                    </h4>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      In-app reminders go to the notifications table. SMS and WhatsApp also store the recipient numbers and message.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+                    {approvalChannelsSelected.length} channel{approvalChannelsSelected.length === 1 ? '' : 's'} selected
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {(['notification', 'sms', 'whatsapp'] as ApprovalChannel[]).map((channel) => {
+                    const checked = approvalReminderChannels[channel];
+                    return (
+                      <div
+                        key={channel}
+                        className={`flex items-center justify-between gap-4 border px-4 py-3 transition-all duration-200 ${
+                          checked ? 'border-border bg-background shadow-sm' : 'border-border bg-transparent'
+                        }`}
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{approvalChannelLabel(channel)}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {channel === 'notification' ? 'In-app alert' : channel === 'sms' ? 'Text message' : 'WhatsApp message'}
+                          </p>
+                        </div>
+                        <ToggleSwitch
+                          checked={checked}
+                          onChange={() => toggleApprovalReminderChannel(channel)}
+                          ariaLabel={`${approvalChannelLabel(channel)} approval reminder`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {showReceiverInput ? (
+                  <div className="mt-4">
+                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">
+                      Receiver Phone Numbers
+                    </label>
+                    <input
+                      value={approvalReminderReceiversText}
+                      onChange={(event) => setApprovalReminderReceiversText(event.target.value)}
+                      className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
+                      placeholder="e.g. 0712345678, 0798765432"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Use commas to separate multiple phone numbers. Each number must start with 0 and be exactly 10 digits.
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-foreground">Reminder Message</label>
+                  <textarea
+                    value={approvalReminderMessage}
+                    onChange={(event) => setApprovalReminderMessage(event.target.value)}
+                    rows={4}
+                    className="w-full border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-shadow duration-200 focus:border-primary focus:ring-1 focus:ring-primary"
+                    placeholder="Type the message that should be sent with this approval reminder..."
+                  />
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {selectedStatus === 'pending_approval' ? (
+            <div className="border-t border-border px-5 py-5">
+              <div className="border border-border bg-background p-4 shadow-sm">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-foreground">Approval Reminder Summary</p>
@@ -760,8 +1023,8 @@ export default function UpdatePurchaseOrderStatus() {
                   </div>
                 </div>
               </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
 
           <div className="mt-2 border-t border-border px-5 py-4 pb-8">
             {formError ? (
