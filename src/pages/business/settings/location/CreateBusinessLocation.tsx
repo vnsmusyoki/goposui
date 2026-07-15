@@ -606,7 +606,7 @@ export default function CreateBusinessLocation() {
     const nextErrors: ErrorState = {};
 
     if (!form.locationName.trim()) nextErrors.locationName = 'Location name is required.';
-    if (!form.locationId.trim()) nextErrors.locationId = 'Location ID is required.';
+    if (!form.locationId.trim()) nextErrors.locationId = 'Location code is required.';
     const normalizedMobile = normalizePhoneNumber(form.mobile);
     if (!normalizedMobile) nextErrors.mobile = 'Mobile number is required.';
     else if (normalizedMobile.length !== 10) nextErrors.mobile = 'Mobile number must start with 0 and contain 10 digits.';
@@ -789,7 +789,7 @@ export default function CreateBusinessLocation() {
                   onChange={(value) => updateField('locationName', value)}
                 />
                 <Field
-                  label="Location ID"
+                  label="Location Code"
                   required
                   placeholder="e.g. LOC-001"
                   value={form.locationId}

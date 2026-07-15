@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type ProductSettingsRecord = {
   id: string;
@@ -106,7 +106,7 @@ export function useProductSettings() {
     setError(null);
 
     try {
-      const response = await apiRequest<ProductSettingsApiResponse>('/business/settings/product');
+      const response = await apiRequestWithoutSessionInvalidation<ProductSettingsApiResponse>('/business/settings/product');
       const nextSettings = normalizeProductSettings(response);
       setSettings(nextSettings);
       return nextSettings;

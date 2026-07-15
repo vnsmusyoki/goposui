@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type SubCategoryProductCounts = {
   total: number;
@@ -99,7 +99,7 @@ const useSubCategoryStore = create<SubCategoryStore>((set, get) => ({
   fetchSubCategories: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await apiRequest<ListSubCategoryResponse>('/sub-categories');
+      const response = await apiRequestWithoutSessionInvalidation<ListSubCategoryResponse>('/sub-categories');
       set({ subCategories: response.categories ?? [] });
       return response.categories ?? [];
     } catch (error) {

@@ -97,7 +97,7 @@ function Login() {
   }
 
   return (
-    <div className="rounded-[2rem] border border-border bg-surface p-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-8">
+    <div className="w-full p-6 shadow-none backdrop-blur-xl sm:rounded-[2rem] sm:border sm:border-border sm:shadow-2xl sm:shadow-black/30 sm:p-8">
       <div className="space-y-2">
         <p className="text-sm font-medium uppercase tracking-[0.25em] text-primary">
           Welcome back
@@ -110,15 +110,15 @@ function Login() {
         </p>
       </div>
 
-      <form className="mt-8 space-y-4" onSubmit={handleSubmit} noValidate>
+      <form className="mt-6 space-y-4 sm:mt-8" onSubmit={handleSubmit} noValidate>
         <label className="block space-y-2">
           <span className="text-sm font-medium text-text">Email address</span>
           <div
-            className={`flex items-center gap-3 rounded-2xl border bg-background px-4 py-3 focus-within:border-primary ${
+            className={`flex items-center gap-3 rounded-2xl border bg-background px-4 py-3 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
               errors.email ? 'border-danger-500' : 'border-border'
             }`}
           >
-            <Mail className="h-4 w-4 text-muted" />
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
               type="email"
               value={email}
@@ -128,7 +128,7 @@ function Login() {
               }}
               placeholder="name@company.com"
               autoComplete="email"
-              className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted"
+              className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
           {errors.email && <p className="text-xs text-danger-500">{errors.email}</p>}
@@ -137,11 +137,11 @@ function Login() {
         <label className="block space-y-2">
           <span className="text-sm font-medium text-text">Password</span>
           <div
-            className={`flex items-center gap-3 rounded-2xl border bg-background px-4 py-3 focus-within:border-primary ${
+            className={`flex items-center gap-3 rounded-2xl border bg-background px-4 py-3 transition-colors focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 ${
               errors.password ? 'border-danger-500' : 'border-border'
             }`}
           >
-            <Lock className="h-4 w-4 text-muted" />
+            <Lock className="h-4 w-4 shrink-0 text-muted-foreground" />
             <input
               type={showPassword ? 'text' : 'password'}
               value={password}
@@ -151,12 +151,12 @@ function Login() {
               }}
               placeholder="••••••••"
               autoComplete="current-password"
-              className="w-full bg-transparent text-sm text-text outline-none placeholder:text-muted"
+              className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             />
             <button
               type="button"
               onClick={() => setShowPassword((current) => !current)}
-              className="text-muted transition hover:text-text"
+              className="shrink-0 text-muted-foreground transition hover:text-foreground"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -166,7 +166,7 @@ function Login() {
         </label>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-3 text-sm text-muted">
+          <label className="flex items-center gap-3 text-sm text-muted-foreground">
             <input
               type="checkbox"
               checked={rememberMe}

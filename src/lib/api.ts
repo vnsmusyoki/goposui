@@ -97,6 +97,39 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return payload as T
 }
 
+export async function apiRequestWithoutSessionInvalidation<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  const hasJsonBody = init.body !== undefined && init.body !== null
+
+  if (hasJsonBody && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers,
+    credentials: 'include',
+    cache: 'no-store',
+  })
+
+  const contentType = response.headers.get('content-type') ?? ''
+  const payload: JsonValue =
+    contentType.includes('application/json')
+      ? await response.json()
+      : await response.text()
+
+  if (!response.ok) {
+    const message =
+      typeof payload === 'object' && payload !== null && 'message' in payload
+        ? String((payload as Record<string, unknown>).message ?? 'Request failed')
+        : response.statusText || 'Request failed'
+
+    throw new ApiError(message, response.status, payload)
+  }
+
+  return payload as T
+}
+
 export async function apiDownload(path: string, init: RequestInit = {}): Promise<DownloadResult> {
   const headers = new Headers(init.headers)
 

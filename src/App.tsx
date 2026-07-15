@@ -43,6 +43,8 @@ import EditPurchaseOrder from './pages/business/purchases/EditPurchaseOrder'
 import UpdatePurchaseOrderStatus from './pages/business/purchases/UpdatePurchaseOrderStatus'
 import PurchaseOrderReturns from './pages/business/purchases/PurchaseOrderReturns'
 import CreatePurchaseReturn from './pages/business/purchases/CreatePurchaseReturn'
+import EditPurchaseReturn from './pages/business/purchases/EditPurchaseReturn'
+import ImportProducts from './pages/business/products/ImportProducts'
 
 function App() {
   return (
@@ -105,6 +107,7 @@ function App() {
           {/* PRODUCTS */}
           <Route path="/products/list" element={<ProductsList />} />
           <Route path="/products/create" element={<CreateProduct />} />
+          <Route path="/products/import" element={<ImportProducts />} />
           <Route path="/products/:id/edit" element={<EditProduct />} />
           <Route path="/products/:id/view" element={<ProductDetails />} />
           <Route path="/products/:id/opening-stock" element={<ProductOpeningStock />} />
@@ -114,6 +117,7 @@ function App() {
           <Route path="/purchases/orders/create" element={<CreatePurchaseOrder />} />
           <Route path="/purchases/returns" element={<PurchaseOrderReturns />} />
           <Route path="/purchases/returns/create" element={<CreatePurchaseReturn />} />
+          <Route path="/purchases/returns/:id/edit" element={<EditPurchaseReturn />} />
           <Route path="/purchases/orders/:id/view" element={<PurchaseOrderDetails />} />
           <Route path="/purchases/orders/:id/edit" element={<EditPurchaseOrder />} />
           <Route path="/purchases/orders/:id/update-status" element={<UpdatePurchaseOrderStatus />} />

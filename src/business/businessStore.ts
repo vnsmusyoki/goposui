@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { useMemo } from 'react';
-import { apiRequest, ApiError } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation, ApiError } from '@/lib/api';
 
 export type BusinessSettingsRecord = {
   id: string;
@@ -148,7 +148,7 @@ export const useBusinessStore = create<BusinessStore>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await apiRequest<BusinessSettingsApiResponse>('/business/settings');
+      const response = await apiRequestWithoutSessionInvalidation<BusinessSettingsApiResponse>('/business/settings');
       const nextSettings = normalizeBusinessSettings(response);
       set({
         settings: nextSettings,
@@ -175,7 +175,7 @@ export const useBusinessStore = create<BusinessStore>((set, get) => ({
     set({ isSaving: true, error: null });
 
     try {
-      const response = await apiRequest<BusinessSettingsApiResponse>('/business/settings', {
+      const response = await apiRequestWithoutSessionInvalidation<BusinessSettingsApiResponse>('/business/settings', {
         method: 'PUT',
         body: JSON.stringify(data),
       });

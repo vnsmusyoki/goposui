@@ -38,6 +38,8 @@ import {
   Download,
   Printer,
   MoreVertical,
+  Banknote,
+  ListOrdered,
   Columns3,
   BarChart3,
   Users,
@@ -69,7 +71,7 @@ import {
   type PaymentStatus,
 } from '@/hooks/business/purchases/usePurchaseOrderReturns';
 import { DateRangePicker } from '@/components/forms/DateRangePicker';
-import { ApiError, apiDownload } from '@/lib/api';
+import { ApiError, apiDownload, apiRequest } from '@/lib/api';
 
 // --------------------------------------------------------------------------
 // Types
@@ -104,7 +106,7 @@ type ActionMenuState = {
   placement: 'top' | 'bottom';
 } | null;
 
-type RowAction = 'view' | 'print' | 'download-pdf' | 'edit' | 'delete' | 'edit-delivery' | 'send-notification';
+type RowAction = 'view' | 'add-payment' | 'view-payment' | 'print' | 'download-pdf' | 'edit' | 'delete' | 'edit-delivery' | 'send-notification';
 
 type SelectOption = {
   value: PurchaseOrderReturnStatus;
@@ -113,6 +115,46 @@ type SelectOption = {
 
 type DeleteModalState = {
   order: PurchaseOrderReturn;
+};
+
+type PurchaseReturnPaymentRecord = {
+  id: string;
+  paidOn: string;
+  amount: number;
+  method: string;
+  referenceNo: string;
+  notes: string;
+  addedBy: string;
+};
+
+type PurchaseReturnDetail = PurchaseOrderReturn & {
+  items?: Array<{
+    id: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    supplierName: string;
+    locationName: string;
+    lotNumber: string;
+    batchNumber: string;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
+};
+
+type PurchaseReturnDetailResponse = {
+  purchaseReturn?: PurchaseReturnDetail;
+  items?: PurchaseReturnDetail['items'];
+  message?: string;
+};
+
+type PurchaseReturnPaymentFormState = {
+  amount: string;
+  method: string;
+  referenceNo: string;
+  notes: string;
+  paidOn: string;
 };
 
 const DEFAULT_VISIBLE_COLUMNS: VisibleColumns = {
@@ -153,6 +195,8 @@ const EXPORT_COLUMN_ORDER: ExportColumnKey[] = [
 
 const ROW_ACTIONS: Array<{ key: RowAction; label: string; destructive?: boolean }> = [
   { key: 'view', label: 'View' },
+  { key: 'add-payment', label: 'Add Payment' },
+  { key: 'view-payment', label: 'View Payment' },
   { key: 'print', label: 'Print' },
   { key: 'download-pdf', label: 'Download Pdf' },
   { key: 'edit', label: 'Edit' },
@@ -526,6 +570,21 @@ export default function PurchaseOrderReturns() {
   const [actionMenuPosition, setActionMenuPosition] = useState<ActionMenuState>(null);
   const [activeReturn, setActiveReturn] = useState<PurchaseOrderReturn | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const [viewModalReturn, setViewModalReturn] = useState<PurchaseReturnDetail | null>(null);
+  const [viewModalLoading, setViewModalLoading] = useState(false);
+  const [viewModalError, setViewModalError] = useState<string | null>(null);
+  const [paymentModalReturn, setPaymentModalReturn] = useState<PurchaseOrderReturn | null>(null);
+  const [paymentViewReturn, setPaymentViewReturn] = useState<PurchaseOrderReturn | null>(null);
+  const [paymentHistoryByReturnId, setPaymentHistoryByReturnId] = useState<Record<string, PurchaseReturnPaymentRecord[]>>({});
+  const [paymentViewLoading, setPaymentViewLoading] = useState(false);
+  const [paymentViewError, setPaymentViewError] = useState<string | null>(null);
+  const [paymentForm, setPaymentForm] = useState<PurchaseReturnPaymentFormState>({
+    amount: '',
+    method: 'Bank Transfer',
+    referenceNo: '',
+    notes: '',
+    paidOn: new Date().toISOString().split('T')[0],
+  });
   const [deleteModalReturn, setDeleteModalReturn] = useState<PurchaseOrderReturn | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
@@ -717,6 +776,96 @@ export default function PurchaseOrderReturns() {
     }
   };
 
+  const closeViewModal = () => {
+    setViewModalReturn(null);
+    setViewModalLoading(false);
+    setViewModalError(null);
+  };
+
+  const openAddPaymentModal = (returnOrder: PurchaseOrderReturn) => {
+    setPaymentModalReturn(returnOrder);
+    setPaymentForm({
+      amount: returnOrder.paymentDue > 0 ? String(returnOrder.paymentDue) : String(returnOrder.grandTotal),
+      method: 'Bank Transfer',
+      referenceNo: returnOrder.referenceNumber ? `${returnOrder.referenceNumber}-PAY` : '',
+      notes: '',
+      paidOn: new Date().toISOString().split('T')[0],
+    });
+    setActionError(null);
+  };
+
+  const closeAddPaymentModal = () => {
+    setPaymentModalReturn(null);
+    setActionError(null);
+  };
+
+  const openViewPaymentModal = (returnOrder: PurchaseOrderReturn) => {
+    setPaymentViewReturn(returnOrder);
+    setPaymentViewLoading(false);
+    setPaymentViewError(null);
+    setActionError(null);
+  };
+
+  const closeViewPaymentModal = () => {
+    setPaymentViewReturn(null);
+    setPaymentViewLoading(false);
+    setPaymentViewError(null);
+  };
+
+  const submitAddPayment = () => {
+    if (!paymentModalReturn) {
+      return;
+    }
+
+    const amount = Number(paymentForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setActionError('Enter a valid payment amount.');
+      return;
+    }
+
+    const paymentRecord: PurchaseReturnPaymentRecord = {
+      id: globalThis.crypto?.randomUUID?.() ?? `payment-${Date.now()}`,
+      paidOn: paymentForm.paidOn || new Date().toISOString().split('T')[0],
+      amount,
+      method: paymentForm.method,
+      referenceNo: paymentForm.referenceNo.trim() || `${paymentModalReturn.referenceNumber}-PAY`,
+      notes: paymentForm.notes.trim(),
+      addedBy: 'Current user',
+    };
+
+    setPaymentHistoryByReturnId((current) => ({
+      ...current,
+      [paymentModalReturn.id]: [paymentRecord, ...(current[paymentModalReturn.id] ?? [])],
+    }));
+    setActionError(null);
+    setPaymentModalReturn(null);
+    toast.success('Payment added to this session');
+  };
+
+  const openViewModal = async (returnOrder: PurchaseOrderReturn) => {
+    setViewModalReturn(null);
+    setViewModalLoading(true);
+    setViewModalError(null);
+    setActionError(null);
+
+    try {
+      const response = await apiRequest<PurchaseReturnDetailResponse>(`/purchases/returns/${returnOrder.id}`);
+      const detail = response.purchaseReturn ?? {
+        ...returnOrder,
+        items: response.items ?? [],
+      };
+      setViewModalReturn({
+        ...detail,
+        items: response.items ?? detail.items ?? [],
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load purchase return.';
+      setViewModalError(message);
+    } finally {
+      setViewModalLoading(false);
+    }
+  };
+
   const openDeleteModal = (returnOrder: PurchaseOrderReturn) => {
     setDeleteModalError(null);
     setDeleteModalReturn(returnOrder);
@@ -853,7 +1002,7 @@ export default function PurchaseOrderReturns() {
 
   const openActionMenu = (returnOrder: PurchaseOrderReturn, button: HTMLButtonElement) => {
     const rect = button.getBoundingClientRect();
-    const menuHeight = 280;
+    const menuHeight = 340;
     const menuWidth = 256;
     const gap = 8;
     const spaceBelow = window.innerHeight - rect.bottom;
@@ -878,7 +1027,13 @@ export default function PurchaseOrderReturns() {
 
     switch (action) {
       case 'view':
-        navigate(`/purchases/returns/${returnOrder.id}/view`);
+        void openViewModal(returnOrder);
+        return;
+      case 'add-payment':
+        openAddPaymentModal(returnOrder);
+        return;
+      case 'view-payment':
+        openViewPaymentModal(returnOrder);
         return;
       case 'print':
         await downloadPurchaseReturnPdf(returnOrder, true);
@@ -1574,6 +1729,16 @@ export default function PurchaseOrderReturns() {
                                         onClick={() => handleReturnAction('view', returnOrder)}
                                       />
                                       <ActionMenuItem
+                                        icon={Banknote}
+                                        label="Add Payment"
+                                        onClick={() => handleReturnAction('add-payment', returnOrder)}
+                                      />
+                                      <ActionMenuItem
+                                        icon={ListOrdered}
+                                        label="View Payment"
+                                        onClick={() => handleReturnAction('view-payment', returnOrder)}
+                                      />
+                                      <ActionMenuItem
                                         icon={Printer}
                                         label="Print"
                                         onClick={() => handleReturnAction('print', returnOrder)}
@@ -1641,6 +1806,443 @@ export default function PurchaseOrderReturns() {
           </div>
         )}
       </div>
+
+      {/* View Modal */}
+      {viewModalLoading || viewModalReturn || viewModalError ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6"
+          onClick={closeViewModal}
+        >
+          <div
+            className="flex h-full w-full max-h-[100dvh] flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl sm:h-[80vh] sm:w-[80vw] sm:max-w-6xl sm:rounded-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Purchase Return</p>
+                <h3 className="mt-1 truncate text-lg font-semibold text-foreground">
+                  {viewModalReturn?.referenceNumber || 'Loading return...'}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {viewModalReturn?.returnDate
+                    ? format(new Date(viewModalReturn.returnDate), 'PPP')
+                    : 'Please wait while we load the return details.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeViewModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close view modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              {viewModalLoading ? (
+                <div className="flex h-full min-h-[16rem] items-center justify-center">
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading purchase return...
+                  </div>
+                </div>
+              ) : viewModalError ? (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                  {viewModalError}
+                </div>
+              ) : viewModalReturn ? (
+                <div className="space-y-5">
+                  <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-lg bg-muted/40 p-2 text-muted-foreground">
+                          <Building2 className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Supplier</p>
+                          <p className="mt-1 text-base font-semibold text-foreground">{viewModalReturn.supplierName}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Return reference <span className="font-medium text-foreground">{viewModalReturn.referenceNumber}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="rounded-lg bg-muted/40 p-2 text-muted-foreground">
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Branch</p>
+                          <p className="mt-1 text-base font-semibold text-foreground">{viewModalReturn.locationName}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Parent purchase <span className="font-medium text-foreground">{viewModalReturn.parentPurchaseReference || '-'}</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Return Status</p>
+                      <div className="mt-2">
+                        <StatusBadge status={viewModalReturn.status} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Payment Status</p>
+                      <div className="mt-2">
+                        <PaymentStatusBadge status={viewModalReturn.paymentStatus} />
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Grand Total</p>
+                      <p className="mt-2 text-lg font-semibold text-foreground">
+                        {formatMoney(viewModalReturn.grandTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-border bg-background">
+                    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Returned Products</p>
+                        <p className="text-xs text-muted-foreground">
+                          {viewModalReturn.items?.length || 0} item{(viewModalReturn.items?.length || 0) === 1 ? '' : 's'} in this return
+                        </p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>
+                          Total quantity: <span className="font-medium text-foreground">{viewModalReturn.totalQuantity ?? 0}</span>
+                        </p>
+                        <p>
+                          Payment due:{' '}
+                          <span className="font-medium text-foreground">
+                            {formatMoney(viewModalReturn.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {viewModalReturn.items && viewModalReturn.items.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-border">
+                          <thead className="bg-muted/30">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Product
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                SKU / Batch
+                              </th>
+                              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Location
+                              </th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Qty
+                              </th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Unit Price
+                              </th>
+                              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Line Total
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border bg-background">
+                            {viewModalReturn.items.map((item) => (
+                              <tr key={item.id} className="hover:bg-muted/10">
+                                <td className="px-4 py-3">
+                                  <p className="text-sm font-medium text-foreground">{item.productName}</p>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground">
+                                  <p className="font-medium text-foreground">{item.sku}</p>
+                                  <p className="text-xs text-muted-foreground">{item.batchNumber || item.lotNumber || '-'}</p>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-muted-foreground">{item.locationName}</td>
+                                <td className="px-4 py-3 text-right text-sm text-foreground">{item.quantity}</td>
+                                <td className="px-4 py-3 text-right text-sm text-foreground">
+                                  {formatMoney(item.unitPrice, currencyCode, currencyPrecision, currencyPlacement)}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm font-medium text-foreground">
+                                  {formatMoney(item.lineTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-10 text-center text-sm text-muted-foreground">No returned products available.</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Add Payment Modal */}
+      {paymentModalReturn ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6"
+          onClick={closeAddPaymentModal}
+        >
+          <div
+            className="flex h-full w-full max-h-[100dvh] flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl sm:h-auto sm:max-h-[80vh] sm:w-[80vw] sm:max-w-4xl sm:rounded-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Add Payment</p>
+                <h3 className="mt-1 truncate text-lg font-semibold text-foreground">{paymentModalReturn.referenceNumber}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Supplier {paymentModalReturn.supplierName} • Branch {paymentModalReturn.locationName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddPaymentModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close add payment modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="rounded-xl border border-border bg-background p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Amount</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={paymentForm.amount}
+                        onChange={(e) => setPaymentForm((current) => ({ ...current, amount: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Payment Date</label>
+                      <input
+                        type="date"
+                        value={paymentForm.paidOn}
+                        onChange={(e) => setPaymentForm((current) => ({ ...current, paidOn: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Method</label>
+                      <select
+                        value={paymentForm.method}
+                        onChange={(e) => setPaymentForm((current) => ({ ...current, method: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      >
+                        <option>Bank Transfer</option>
+                        <option>M-Pesa</option>
+                        <option>Cash</option>
+                        <option>Card</option>
+                        <option>Cheque</option>
+                        <option>Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">Reference No.</label>
+                      <input
+                        type="text"
+                        value={paymentForm.referenceNo}
+                        onChange={(e) => setPaymentForm((current) => ({ ...current, referenceNo: e.target.value }))}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Notes</label>
+                    <textarea
+                      rows={4}
+                      value={paymentForm.notes}
+                      onChange={(e) => setPaymentForm((current) => ({ ...current, notes: e.target.value }))}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Payment Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Grand Total</span>
+                      <span className="font-medium text-foreground">
+                        {formatMoney(paymentModalReturn.grandTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Payment Due</span>
+                      <span className="font-medium text-foreground">
+                        {formatMoney(paymentModalReturn.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Current Status</span>
+                      <PaymentStatusBadge status={paymentModalReturn.paymentStatus} />
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs text-muted-foreground">
+                    Payment entries are kept in this session only until a payment endpoint is connected.
+                  </p>
+                </div>
+              </div>
+
+              {actionError ? (
+                <div className="mt-4 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                  {actionError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={closeAddPaymentModal}
+                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitAddPayment}
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Save Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* View Payment Modal */}
+      {paymentViewReturn ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6"
+          onClick={closeViewPaymentModal}
+        >
+          <div
+            className="flex h-full w-full max-h-[100dvh] flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl sm:h-[80vh] sm:w-[80vw] sm:max-w-5xl sm:rounded-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">View Payment</p>
+                <h3 className="mt-1 truncate text-lg font-semibold text-foreground">{paymentViewReturn.referenceNumber}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Supplier {paymentViewReturn.supplierName} • Branch {paymentViewReturn.locationName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeViewPaymentModal}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close view payment modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Payment Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Grand Total</span>
+                      <span className="font-medium text-foreground">
+                        {formatMoney(paymentViewReturn.grandTotal, currencyCode, currencyPrecision, currencyPlacement)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Payment Due</span>
+                      <span className="font-medium text-foreground">
+                        {formatMoney(paymentViewReturn.paymentDue, currencyCode, currencyPrecision, currencyPlacement)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Payment Status</span>
+                      <PaymentStatusBadge status={paymentViewReturn.paymentStatus} />
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Payment Count</span>
+                      <span className="font-medium text-foreground">{(paymentHistoryByReturnId[paymentViewReturn.id] ?? []).length}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-background">
+                  <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Payment Entries</p>
+                      <p className="text-xs text-muted-foreground">Session-local payment history for this return</p>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[calc(80vh-180px)] overflow-y-auto">
+                    {(paymentHistoryByReturnId[paymentViewReturn.id] ?? []).length > 0 ? (
+                      <div className="divide-y divide-border">
+                        {(paymentHistoryByReturnId[paymentViewReturn.id] ?? []).map((entry) => (
+                          <div key={entry.id} className="p-4 text-sm">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground">{entry.referenceNo}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{entry.method} • {entry.paidOn}</p>
+                              </div>
+                              <p className="font-semibold text-foreground">
+                                {formatMoney(entry.amount, currencyCode, currencyPrecision, currencyPlacement)}
+                              </p>
+                            </div>
+                            {entry.notes ? <p className="mt-2 text-xs text-muted-foreground">{entry.notes}</p> : null}
+                            <p className="mt-2 text-[11px] text-muted-foreground">Added by {entry.addedBy}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                        No payments recorded yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border px-5 py-4 pb-6 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  closeViewPaymentModal();
+                  openAddPaymentModal(paymentViewReturn);
+                }}
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Add Payment
+              </button>
+              <button
+                type="button"
+                onClick={closeViewPaymentModal}
+                className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Delete Modal */}
       {deleteModalReturn ? (

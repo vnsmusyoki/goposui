@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type CategoryItem = {
   id: string;
@@ -90,7 +90,7 @@ const useCategoryStore = create<CategoryStore>((set, get) => ({
   fetchCategories: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await apiRequest<ListCategoryResponse>('/categories');
+      const response = await apiRequestWithoutSessionInvalidation<ListCategoryResponse>('/categories');
       set({ categories: response.categories ?? [] });
       return response.categories ?? [];
     } catch (error) {

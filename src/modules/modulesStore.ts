@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { apiRequest, ApiError } from '../lib/api'
+import { apiRequestWithoutSessionInvalidation, ApiError } from '../lib/api'
 import type { NavigationGroupResponse, ModulesResponse } from '../auth/types'
 
 type ModulesStore = {
@@ -35,7 +35,7 @@ export const useModulesStore = create<ModulesStore>((set) => ({
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiRequest<ModulesResponse>('/auth/modules')
+      const response = await apiRequestWithoutSessionInvalidation<ModulesResponse>('/auth/modules')
       applyModulesPayload(set, response)
       return response.modules ?? []
     } catch (error) {
@@ -59,7 +59,7 @@ export const useModulesStore = create<ModulesStore>((set) => ({
     set({ isLoading: true, error: null })
 
     try {
-      const response = await apiRequest<ModulesResponse>('/auth/modules')
+      const response = await apiRequestWithoutSessionInvalidation<ModulesResponse>('/auth/modules')
       applyModulesPayload(set, response)
       return response.modules ?? []
     } catch (error) {

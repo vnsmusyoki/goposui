@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type ReturnableStockItem = {
   id: string;
@@ -82,6 +82,61 @@ type CreatePurchaseReturnResponse = {
   message?: string;
 };
 
+export type PurchaseReturnItem = {
+  id: string;
+  purchaseReturnId: string;
+  businessId: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  supplierId: string;
+  supplierName: string;
+  locationId: string;
+  locationName: string;
+  purchaseOrderId: string;
+  inventoryBatchId: string;
+  lotNumber: string;
+  batchNumber: string;
+  expiryDate: string;
+  manufactureDate: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PurchaseReturnDetail = {
+  id: string;
+  businessId: string;
+  parentPurchaseId: string;
+  parentPurchaseReference: string;
+  referenceNumber: string;
+  returnDate: string;
+  locationId: string;
+  locationName: string;
+  supplierId: string;
+  supplierName: string;
+  status: string;
+  paymentStatus: string;
+  grandTotal: number;
+  paymentDue: number;
+  returnReason: string;
+  notes: string;
+  itemsCount: number;
+  totalQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+  items?: PurchaseReturnItem[];
+};
+
+type PurchaseReturnDetailResponse = {
+  purchaseReturn?: PurchaseReturnDetail;
+  items?: PurchaseReturnItem[];
+  activities?: Array<Record<string, unknown>>;
+  message?: string;
+};
+
 function normalizeReturnableStockGroup(group: ReturnableStockGroup): ReturnableStockGroup {
   return {
     ...group,
@@ -145,6 +200,47 @@ export function usePurchaseReturns() {
     }
   }, []);
 
+  const fetchPurchaseReturn = useCallback(async (purchaseReturnId: string) => {
+    const id = purchaseReturnId.trim();
+    if (!id) {
+      throw new ApiError('Purchase return ID is required.', 400, { message: 'Purchase return ID is required.' });
+    }
+
+    try {
+      return await apiRequestWithoutSessionInvalidation<PurchaseReturnDetailResponse>(`/purchases/returns/${id}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load purchase return.';
+      setError(message);
+      throw err;
+    }
+  }, []);
+
+  const updatePurchaseReturn = useCallback(async (purchaseReturnId: string, payload: CreatePurchaseReturnInput) => {
+    const id = purchaseReturnId.trim();
+    if (!id) {
+      throw new ApiError('Purchase return ID is required.', 400, { message: 'Purchase return ID is required.' });
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      return await apiRequestWithoutSessionInvalidation<{ purchaseReturn?: PurchaseReturnDetail; message?: string }>(
+        `/purchases/returns/${id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        },
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update purchase return.';
+      setError(message);
+      throw err;
+    } finally {
+      setSubmitting(false);
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       setError(null);
@@ -154,6 +250,8 @@ export function usePurchaseReturns() {
   return {
     searchReturnableStock,
     createPurchaseReturn,
+    fetchPurchaseReturn,
+    updatePurchaseReturn,
     submitting,
     loading,
     error,

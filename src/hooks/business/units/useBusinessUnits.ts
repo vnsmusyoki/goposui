@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type BusinessUnitRecord = {
   id: string;
@@ -72,7 +72,7 @@ const useBusinessUnitsStore = create<BusinessUnitsStore>((set, get) => ({
   loadUnits: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await apiRequest<BusinessUnitsResponse>('/business/units');
+      const response = await apiRequestWithoutSessionInvalidation<BusinessUnitsResponse>('/business/units');
       const nextUnits = (response.units ?? []).map(normalizeUnit);
       set({ units: nextUnits });
       return nextUnits;

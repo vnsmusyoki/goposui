@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type BusinessLocationRecord = {
   id: string;
   businessId: string;
   locationId: string;
+  locationCode: string;
   locationName: string;
   landmark: string;
   exactAddress: string;
@@ -49,6 +50,7 @@ export type BusinessLocationRecord = {
 
 export type CreateBusinessLocationInput = {
   locationId: string;
+  locationCode?: string;
   locationName: string;
   landmark: string;
   exactAddress: string;
@@ -93,6 +95,7 @@ type BusinessLocationApiItem = {
   id: string;
   business_id: string;
   location_id: string;
+  location_code: string;
   location_name: string;
   landmark: string;
   exact_address: string;
@@ -161,6 +164,7 @@ function normalizeLocation(response: BusinessLocationApiItem): BusinessLocationR
     id: response.id,
     businessId: response.business_id,
     locationId: response.location_id,
+    locationCode: response.location_code ?? response.location_id,
     locationName: response.location_name,
     landmark: response.landmark ?? '',
     exactAddress: response.exact_address ?? '',
@@ -215,7 +219,7 @@ export function useBusinessLocations() {
     setError(null);
 
     try {
-      const response = await apiRequest<BusinessLocationsApiResponse>('/business/locations');
+      const response = await apiRequestWithoutSessionInvalidation<BusinessLocationsApiResponse>('/business/locations');
       const nextLocations = (response.locations ?? []).map(normalizeLocation);
       setLocations(nextLocations);
       return nextLocations;
@@ -233,7 +237,7 @@ export function useBusinessLocations() {
     setError(null);
 
     try {
-      const response = await apiRequest<BusinessLocationApiCreateResponse>('/business/locations', {
+      const response = await apiRequestWithoutSessionInvalidation<BusinessLocationApiCreateResponse>('/business/locations', {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -254,7 +258,7 @@ export function useBusinessLocations() {
     setError(null);
 
     try {
-      await apiRequest<{ id: string; message?: string }>(`/business/locations/${locationId}`, {
+      await apiRequestWithoutSessionInvalidation<{ id: string; message?: string }>(`/business/locations/${locationId}`, {
         method: 'DELETE',
       });
       setLocations((current) => current.filter((location) => location.id !== locationId));

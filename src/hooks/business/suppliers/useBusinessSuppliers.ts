@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiRequest } from '@/lib/api';
+import { apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type BusinessSupplierRecord = {
   id: string;
@@ -124,7 +124,7 @@ export function useBusinessSuppliers() {
     setError(null);
 
     try {
-      const response = await apiRequest<ListBusinessSuppliersResponse>('/business/suppliers');
+      const response = await apiRequestWithoutSessionInvalidation<ListBusinessSuppliersResponse>('/business/suppliers');
       const nextSuppliers = (response.suppliers ?? []).map(normalizeSupplier);
       setSuppliers(nextSuppliers);
       return nextSuppliers;
@@ -142,7 +142,7 @@ export function useBusinessSuppliers() {
     setError(null);
 
     try {
-      const response = await apiRequest<BusinessSupplierRecord>('/business/suppliers', {
+      const response = await apiRequestWithoutSessionInvalidation<BusinessSupplierRecord>('/business/suppliers', {
         method: 'POST',
         body: JSON.stringify({
           supplier_type: data.supplierType,

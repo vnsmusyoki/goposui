@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, apiRequestWithoutSessionInvalidation } from '@/lib/api';
 
 export type BrandRecord = {
   id: string;
@@ -48,7 +48,7 @@ const useBrandStore = create<BrandStore>((set, get) => ({
   loadBrands: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await apiRequest<BrandsResponse>('/brands');
+      const response = await apiRequestWithoutSessionInvalidation<BrandsResponse>('/brands');
       set({ brands: response.brands ?? [] });
       return response.brands ?? [];
     } catch (err) {
