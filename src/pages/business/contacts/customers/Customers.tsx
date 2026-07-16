@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
   BarChart3,
-  CheckSquare,
   Building2,
   CheckCircle2,
   Columns3,
   Download,
   Edit2,
+  CreditCard,
+  Eye,
   FileText,
   Loader2,
   Mail,
   MapPin,
+  MoreVertical,
   Phone,
   Plus,
   RefreshCw,
@@ -22,9 +24,28 @@ import {
   Trash2,
   Users,
   UserRound,
+  XCircle,
+  MessageCircle,
   X,
   FileSpreadsheet,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  BarChart as RechartsBarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LineChart as RechartsLineChart,
+  Line,
+  ScatterChart as RechartsScatterChart,
+  Scatter,
+  ZAxis,
+} from 'recharts';
 import toast from 'react-hot-toast';
 import { ApiError } from '@/lib/api';
 import { normalizePhoneNumber } from '@/lib/phone';
@@ -349,6 +370,68 @@ function MetricCard({
   );
 }
 
+function ActionMenuItem({
+  label,
+  onClick,
+  destructive = false,
+}: {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}) {
+  const iconMap: Record<string, React.ReactNode> = {
+    Pay: <CreditCard className="h-4 w-4" />,
+    View: <Eye className="h-4 w-4" />,
+    Edit: <Edit2 className="h-4 w-4" />,
+    Deactivate: <XCircle className="h-4 w-4" />,
+    Ledger: <FileText className="h-4 w-4" />,
+    Sales: <BarChart3 className="h-4 w-4" />,
+    'Documents & notes': <MessageCircle className="h-4 w-4" />,
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+        destructive ? 'text-destructive hover:bg-destructive/10' : 'text-foreground hover:bg-surface-alt hover:text-primary'
+      }`}
+    >
+      {iconMap[label] ?? <MoreVertical className="h-4 w-4" />}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={onChange}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border p-0.5 transition-colors overflow-hidden ${
+        checked ? 'border-primary bg-primary/15' : 'border-border bg-background'
+      }`}
+    >
+      <span
+        className={`h-5 w-5 rounded-full shadow-sm transition-transform duration-200 ${
+          checked ? 'translate-x-5 bg-primary' : 'translate-x-0 bg-muted-foreground'
+        }`}
+      />
+    </button>
+  );
+}
+
 function CustomerFormModal({
   open,
   title,
@@ -631,6 +714,12 @@ export default function Customers() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
   const [visibleColumns, setVisibleColumns] = useState<VisibleCustomerColumns>(DEFAULT_VISIBLE_CUSTOMER_COLUMNS);
+  const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+  const [openActionMenuPosition, setOpenActionMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const createInitialForm = useMemo(() => getInitialCustomerForm(), [showCreateModal]);
   const editInitialForm = useMemo(() => getInitialCustomerForm(editingCustomer), [editingCustomer]);
@@ -640,6 +729,30 @@ export default function Customers() {
       toast.error(error);
     }
   }, [error]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setOpenActionMenuId(null);
+        setOpenActionMenuPosition(null);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenuId(null);
+        setOpenActionMenuPosition(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const active = customers.filter((customer) => customer.isActive && !customer.deleted).length;
@@ -709,12 +822,138 @@ export default function Customers() {
   const businessRate = stats.total > 0 ? Math.round((stats.businesses / stats.total) * 100) : 0;
   const completenessRate = stats.total > 0 ? Math.round(((stats.businesses + stats.individuals) / stats.total) * 100) : 0;
 
+  const formatAmount = (value: number) =>
+    new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 2,
+    }).format(value);
+
+  const chartColors = ['#2563eb', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6'];
+
+  const chartTooltipStyle = {
+    backgroundColor: 'hsl(var(--background))',
+    border: '1px solid hsl(var(--border))',
+    borderRadius: 12,
+    color: 'hsl(var(--foreground))',
+    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.12)',
+  } as const;
+
+  const renderChartCardTitle = (title: string, subtitle: string, icon: ReactNode) => (
+    <div className="mb-4 flex items-start justify-between gap-3">
+      <div>
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          {icon}
+          {title}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+
   const analyticsBars = [
     { label: 'Active', value: stats.active, total: stats.total, color: 'bg-emerald-500' },
     { label: 'Inactive', value: stats.inactive, total: stats.total, color: 'bg-amber-500' },
     { label: 'Businesses', value: stats.businesses, total: stats.total, color: 'bg-sky-500' },
     { label: 'Individuals', value: stats.individuals, total: stats.total, color: 'bg-violet-500' },
   ];
+
+  const statusChartData = useMemo(
+    () => [
+      { name: 'Active', value: stats.active },
+      { name: 'Inactive', value: stats.inactive },
+    ],
+    [stats.active, stats.inactive],
+  );
+
+  const typeChartData = useMemo(
+    () => [
+      { name: 'Business', value: stats.businesses },
+      { name: 'Individual', value: stats.individuals },
+    ],
+    [stats.businesses, stats.individuals],
+  );
+
+  const customerGroupChartData = useMemo(() => {
+    const groupCounts = new Map<string, number>();
+    customers
+      .filter((customer) => !customer.deleted)
+      .forEach((customer) => {
+        const key = customer.customerGroup.trim() || 'Ungrouped';
+        groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
+      });
+
+    return Array.from(groupCounts.entries())
+      .map(([name, value]) => ({ name: name.length > 16 ? `${name.slice(0, 16)}...` : name, fullName: name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }, [customers]);
+
+  const monthlyOnboardingChartData = useMemo(() => {
+    const monthBuckets = Array.from({ length: 12 }, (_, index) => {
+      const date = new Date();
+      date.setMonth(date.getMonth() - (11 - index));
+      return {
+        key: `${date.getFullYear()}-${date.getMonth()}`,
+        label: date.toLocaleDateString('en-US', { month: 'short' }),
+        count: 0,
+      };
+    });
+
+    const monthMap = new Map(monthBuckets.map((bucket) => [bucket.key, bucket]));
+
+    customers
+      .filter((customer) => !customer.deleted)
+      .forEach((customer) => {
+        const createdDate = new Date(customer.createdAt);
+        if (Number.isNaN(createdDate.getTime())) {
+          return;
+        }
+
+        const key = `${createdDate.getFullYear()}-${createdDate.getMonth()}`;
+        const bucket = monthMap.get(key);
+        if (bucket) {
+          bucket.count += 1;
+        }
+      });
+
+    return monthBuckets;
+  }, [customers]);
+
+  const financialExposureChartData = useMemo(
+    () => [
+      {
+        name: 'Opening Balance',
+        value: customers.filter((customer) => !customer.deleted).reduce((sum, customer) => sum + (Number(customer.openingBalance) || 0), 0),
+      },
+      {
+        name: 'Advance Balance',
+        value: customers.filter((customer) => !customer.deleted).reduce((sum, customer) => sum + (Number(customer.advanceBalance) || 0), 0),
+      },
+      {
+        name: 'Sale Due',
+        value: customers.filter((customer) => !customer.deleted).reduce((sum, customer) => sum + (Number(customer.totalSaleDue) || 0), 0),
+      },
+      {
+        name: 'Return Due',
+        value: customers.filter((customer) => !customer.deleted).reduce((sum, customer) => sum + (Number(customer.totalSellReturnDue) || 0), 0),
+      },
+    ],
+    [customers],
+  );
+
+  const topCreditCustomersChartData = useMemo(
+    () =>
+      customers
+        .filter((customer) => !customer.deleted)
+        .slice()
+        .sort((a, b) => Number(b.creditLimit || 0) - Number(a.creditLimit || 0))
+        .slice(0, 6)
+        .map((customer) => ({
+          name: customerDisplayName(customer).length > 18 ? `${customerDisplayName(customer).slice(0, 18)}...` : customerDisplayName(customer),
+          fullName: customerDisplayName(customer),
+          value: Number(customer.creditLimit || 0),
+        })),
+    [customers],
+  );
 
   const visibleExportColumns = useMemo(
     () => CUSTOMER_EXPORT_COLUMN_ORDER.filter((column) => visibleColumns[column.key]),
@@ -975,6 +1214,9 @@ export default function Customers() {
   };
 
   const handleCustomerQuickAction = async (action: 'pay' | 'view' | 'edit' | 'deactivate' | 'ledger' | 'sales' | 'documents-notes', customer: BusinessCustomerRecord) => {
+    setOpenActionMenuId(null);
+    setOpenActionMenuPosition(null);
+
     switch (action) {
       case 'edit':
         setEditingCustomer(customer);
@@ -994,6 +1236,26 @@ export default function Customers() {
       default:
         return;
     }
+  };
+
+  const toggleCustomerActionMenu = (customerId: string, target: HTMLButtonElement) => {
+    if (openActionMenuId === customerId) {
+      setOpenActionMenuId(null);
+      setOpenActionMenuPosition(null);
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const menuHeight = 320;
+    const menuWidth = 260;
+    const gap = 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const top = spaceBelow < menuHeight && spaceAbove > spaceBelow ? Math.max(rect.top - menuHeight - gap, gap) : rect.bottom + gap;
+    const left = Math.min(Math.max(rect.right - menuWidth, gap), window.innerWidth - menuWidth - gap);
+
+    setOpenActionMenuId(customerId);
+    setOpenActionMenuPosition({ top, left });
   };
 
   const confirmDeleteCustomer = async () => {
@@ -1092,85 +1354,175 @@ export default function Customers() {
       </div>
 
       {activeTab === 'analytics' ? (
-        <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
-          <SectionCard
-            icon={FileSpreadsheet}
-            title="Customer Analytics"
-            description="A concise view of your customer base, grouped by type and account status."
-          >
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {analyticsBars.map((item) => (
-                <div key={item.label} className="rounded-xl border border-border bg-background p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">{item.label}</p>
-                    <p className="text-sm font-semibold text-foreground">{item.value}</p>
-                  </div>
-                  <div className="mt-3 h-2 rounded-full bg-muted">
-                    <div
-                      className={`h-2 rounded-full ${item.color}`}
-                      style={{ width: `${item.total > 0 ? Math.max(8, Math.round((item.value / item.total) * 100)) : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-border bg-background p-4">
-                <p className="text-sm font-medium text-muted-foreground">Status Health</p>
-                <p className="mt-2 text-2xl font-bold text-foreground">{activeRate}%</p>
-                <p className="mt-1 text-xs text-muted-foreground">Active customers are ready for follow-up and sales.</p>
-              </div>
-              <div className="rounded-2xl border border-border bg-background p-4">
-                <p className="text-sm font-medium text-muted-foreground">Business Share</p>
-                <p className="mt-2 text-2xl font-bold text-foreground">{businessRate}%</p>
-                <p className="mt-1 text-xs text-muted-foreground">Business accounts with a company profile on record.</p>
-              </div>
-              <div className="rounded-2xl border border-border bg-background p-4">
-                <p className="text-sm font-medium text-muted-foreground">Record Coverage</p>
-                <p className="mt-2 text-2xl font-bold text-foreground">{completenessRate}%</p>
-                <p className="mt-1 text-xs text-muted-foreground">Profiles with enough detail to support operations.</p>
-              </div>
-            </div>
-          </SectionCard>
-
-          <SectionCard
-            icon={Users}
-            title="Recent Customers"
-            description="The latest customer onboarding activity in your account."
-          >
-            <div className="space-y-3">
-              {recentCustomers.length > 0 ? (
-                recentCustomers.map((customer) => (
-                  <div key={customer.id} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{customerDisplayName(customer)}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {customer.customerCode || '—'} · {customerType(customer)}
-                        </p>
-                      </div>
-                      <StatusBadge active={customer.isActive} />
+        <div className="space-y-4">
+          <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <SectionCard
+              icon={FileSpreadsheet}
+              title="Customer Analytics"
+              description="A concise view of your customer base, grouped by type and account status."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {analyticsBars.map((item) => (
+                  <div key={item.label} className="rounded-xl border border-border bg-background p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium text-foreground">{item.label}</p>
+                      <p className="text-sm font-semibold text-foreground">{item.value}</p>
                     </div>
-                    <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <Phone className="h-3.5 w-3.5" />
-                        <span>{customer.phone || '—'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-3.5 w-3.5" />
-                        <span>{customer.email || '—'}</span>
-                      </div>
+                    <div className="mt-3 h-2 rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full ${item.color}`}
+                        style={{ width: `${item.total > 0 ? Math.max(8, Math.round((item.value / item.total) * 100)) : 0}%` }}
+                      />
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="rounded-xl border border-dashed border-border bg-background p-6 text-sm text-muted-foreground">
-                  No customers have been added yet.
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3 md:grid-cols-3">
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <p className="text-sm font-medium text-muted-foreground">Status Health</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{activeRate}%</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Active customers are ready for follow-up and sales.</p>
                 </div>
-              )}
-            </div>
-          </SectionCard>
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <p className="text-sm font-medium text-muted-foreground">Business Share</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{businessRate}%</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Business accounts with a company profile on record.</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-background p-4">
+                  <p className="text-sm font-medium text-muted-foreground">Record Coverage</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{completenessRate}%</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Profiles with enough detail to support operations.</p>
+                </div>
+              </div>
+            </SectionCard>
+
+            <SectionCard
+              icon={Users}
+              title="Recent Customers"
+              description="The latest customer onboarding activity in your account."
+            >
+              <div className="space-y-3">
+                {recentCustomers.length > 0 ? (
+                  recentCustomers.map((customer) => (
+                    <div key={customer.id} className="rounded-xl border border-border bg-background p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-foreground">{customerDisplayName(customer)}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {customer.customerCode || '—'} · {customerType(customer)}
+                          </p>
+                        </div>
+                        <StatusBadge active={customer.isActive} />
+                      </div>
+                      <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-3.5 w-3.5" />
+                          <span>{customer.phone || '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Mail className="h-3.5 w-3.5" />
+                          <span>{customer.email || '—'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border bg-background p-6 text-sm text-muted-foreground">
+                    No customers have been added yet.
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <SectionCard icon={CheckCircle2} title="Status Mix" description="Active and inactive customer split.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Customers']} />
+                    <Pie data={statusChartData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={86} paddingAngle={3}>
+                      {statusChartData.map((entry, index) => (
+                        <Cell key={entry.name} fill={chartColors[index % chartColors.length]} />
+                      ))}
+                    </Pie>
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={Building2} title="Customer Type Mix" description="Business versus individual customer share.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Customers']} />
+                    <Pie data={typeChartData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={86} paddingAngle={3}>
+                      {typeChartData.map((entry, index) => (
+                        <Cell key={entry.name} fill={chartColors[(index + 2) % chartColors.length]} />
+                      ))}
+                    </Pie>
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={BarChart3} title="Customer Groups" description="Top groups by customer count.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsBarChart data={customerGroupChartData} layout="vertical" margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} />
+                    <YAxis type="category" dataKey="name" width={90} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'Customers']} />
+                    <Bar dataKey="value" radius={[0, 8, 8, 0]} fill={chartColors[0]} />
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={RefreshCw} title="Onboarding Trend" description="New customers added over the last 12 months.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={monthlyOnboardingChartData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                    <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [value ?? 0, 'New customers']} />
+                    <Line type="monotone" dataKey="count" stroke={chartColors[1]} strokeWidth={3} dot={{ r: 4, fill: chartColors[1] }} activeDot={{ r: 6 }} />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={CreditCard} title="Financial Exposure" description="Total customer balances and dues across the book.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsBarChart data={financialExposureChartData} layout="vertical" margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value) => formatAmount(Number(value))} />
+                    <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [formatAmount(Number(value ?? 0)), 'Amount']} />
+                    <Bar dataKey="value" radius={[0, 8, 8, 0]} fill={chartColors[2]} />
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={BarChart3} title="Top Credit Limits" description="Customers with the highest available credit.">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsBarChart data={topCreditCustomersChartData} layout="vertical" margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value) => formatAmount(Number(value))} />
+                    <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={chartTooltipStyle} formatter={(value: any) => [formatAmount(Number(value ?? 0)), 'Credit limit']} />
+                    <Bar dataKey="value" radius={[0, 8, 8, 0]} fill={chartColors[3]} />
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              </div>
+            </SectionCard>
+          </div>
         </div>
       ) : (
         <SectionCard
@@ -1256,60 +1608,72 @@ export default function Customers() {
                 Columns
               </button>
               {columnsOpen ? (
-                <div className="absolute right-0 top-12 z-30 w-72 rounded-xl border border-border bg-background shadow-2xl">
-                  <div className="border-b border-border px-4 py-3">
-                    <div className="flex items-center justify-between gap-3">
+                <div
+                  className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 backdrop-blur-sm sm:p-6"
+                  onClick={() => setColumnsOpen(false)}
+                >
+                  <div
+                    className="flex h-full w-full max-h-[100dvh] flex-col overflow-hidden rounded-none border border-border bg-card shadow-2xl sm:h-auto sm:max-h-[80vh] sm:w-[80vw] sm:max-w-6xl sm:rounded-sm"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
                       <div>
-                        <p className="text-sm font-semibold text-foreground">Columns</p>
-                        <p className="text-xs text-muted-foreground">Choose which customer columns appear.</p>
+                        <p className="text-sm font-semibold text-foreground">Show columns</p>
+                        <p className="text-xs text-muted-foreground">Turn columns on or off for this table.</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => setColumnsOpen(false)}
-                        className="rounded p-1 hover:bg-muted/60"
-                        aria-label="Close columns"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                        aria-label="Close column picker"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                  </div>
-                  <div className="space-y-1 p-3">
-                    {CUSTOMER_EXPORT_COLUMN_ORDER.map((column) => (
-                      <label
-                        key={column.key}
-                        className="flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm text-foreground hover:bg-muted/40"
-                      >
-                        <span>{column.label}</span>
-                        <input
-                          type="checkbox"
-                          checked={visibleColumns[column.key]}
-                          onChange={() =>
-                            setVisibleColumns((current) => ({
-                              ...current,
-                              [column.key]: !current[column.key],
-                            }))
-                          }
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={handleResetColumns}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/60"
-                    >
-                      <CheckSquare className="h-3.5 w-3.5" />
-                      Turn all on
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setColumnsOpen(false)}
-                      className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:opacity-90"
-                    >
-                      Done
-                    </button>
+                    <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {CUSTOMER_EXPORT_COLUMN_ORDER.map((column) => (
+                          <div
+                            key={column.key}
+                            className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background px-3 py-3 text-sm text-foreground"
+                          >
+                            <span className="font-medium">{column.label}</span>
+                            <ToggleSwitch
+                              checked={visibleColumns[column.key]}
+                              onChange={() =>
+                                setVisibleColumns((current) => ({
+                                  ...current,
+                                  [column.key]: !current[column.key],
+                                }))
+                              }
+                              ariaLabel={`Toggle ${column.label} column`}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                      <p className="text-xs text-muted-foreground">Reset brings all columns back on.</p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleResetColumns();
+                            setColumnsOpen(false);
+                          }}
+                          className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-xs font-medium text-foreground hover:bg-surface-alt"
+                        >
+                          Turn all on
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setColumnsOpen(false)}
+                          className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -1391,15 +1755,42 @@ export default function Customers() {
                           </td>
                         ) : null}
                         {visibleColumns.actions ? (
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => void handleCustomerQuickAction('pay', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Pay</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('view', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">View</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('edit', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Edit</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('deactivate', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Deactivate</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('ledger', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Ledger</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('sales', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Sales</button>
-                              <button type="button" onClick={() => void handleCustomerQuickAction('documents-notes', customer)} className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted/60">Documents & notes</button>
+                          <td className="px-4 py-3 text-right">
+                            <div className="relative flex items-center justify-end" onClick={(event) => event.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(event) => toggleCustomerActionMenu(customer.id, event.currentTarget)}
+                                className="rounded p-1.5 transition-colors hover:bg-muted/60 hover:text-foreground"
+                                aria-label="Open customer actions"
+                              >
+                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                              </button>
+                              {openActionMenuId === customer.id && openActionMenuPosition ? (
+                                <div
+                                  ref={actionMenuRef}
+                                  className="fixed z-50 w-72 overflow-hidden rounded-xl border border-border bg-background shadow-2xl shadow-black/10"
+                                  style={{
+                                    top: openActionMenuPosition.top,
+                                    left: openActionMenuPosition.left,
+                                  }}
+                                >
+                                  <div className="border-b border-border px-4 py-3">
+                                    <p className="text-sm font-semibold text-foreground">{customerDisplayName(customer)}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                      {customer.contactId || customer.customerCode || 'Customer'} · Actions
+                                    </p>
+                                  </div>
+                                  <div className="p-2">
+                                    <ActionMenuItem label="Pay" onClick={() => void handleCustomerQuickAction('pay', customer)} />
+                                    <ActionMenuItem label="View" onClick={() => void handleCustomerQuickAction('view', customer)} />
+                                    <ActionMenuItem label="Edit" onClick={() => void handleCustomerQuickAction('edit', customer)} />
+                                    <ActionMenuItem label="Deactivate" onClick={() => void handleCustomerQuickAction('deactivate', customer)} />
+                                    <ActionMenuItem label="Ledger" onClick={() => void handleCustomerQuickAction('ledger', customer)} />
+                                    <ActionMenuItem label="Sales" onClick={() => void handleCustomerQuickAction('sales', customer)} />
+                                    <ActionMenuItem label="Documents & notes" onClick={() => void handleCustomerQuickAction('documents-notes', customer)} />
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           </td>
                         ) : null}
