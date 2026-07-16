@@ -18,44 +18,14 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { apiDownload, apiRequest, ApiError } from '@/lib/api';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
 import { useProducts, type ProductSearchResult } from '@/hooks/business/products/useProducts';
-
-type ImportRow = {
-  id: string;
-  batchId: string;
-  rowNumber: number;
-  sku: string;
-  productId: string;
-  locationId: string;
-  quantity: string;
-  unitCostBeforeTax: string;
-  lotNumber: string;
-  expiryDate: string;
-  rowData: Record<string, string>;
-  validationErrors: string[];
-  status: string;
-  importedInventoryBatchId: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ImportBatch = {
-  id: string;
-  businessId: string;
-  fileName: string;
-  status: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ImportPreviewResponse = {
-  batch: ImportBatch;
-  rows: ImportRow[];
-  message: string;
-};
+import {
+  useOpeningStockImports,
+  type OpeningStockImportBatch,
+  type OpeningStockImportRow,
+} from '@/hooks/business/openingstock/useOpeningStockImports';
+type ImportRow = OpeningStockImportRow;
 
 type ImportRowFormState = {
   sku: string;
@@ -144,6 +114,7 @@ function previewStatusClass(status: string) {
       return 'bg-emerald-100 text-emerald-700';
     case 'invalid':
       return 'bg-amber-100 text-amber-700';
+    case 'processed':
     case 'imported':
       return 'bg-primary/10 text-primary';
     case 'error':
@@ -159,8 +130,9 @@ function previewStatusLabel(status: string) {
       return 'Ready';
     case 'invalid':
       return 'Needs Fixing';
+    case 'processed':
     case 'imported':
-      return 'Imported';
+      return 'Processed';
     case 'error':
       return 'Error';
     default:
@@ -168,26 +140,41 @@ function previewStatusLabel(status: string) {
   }
 }
 
+function isProcessedStatus(status: string) {
+  return status === 'processed' || status === 'imported';
+}
+
 export default function ImportOpeningStock() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [batch, setBatch] = useState<ImportBatch | null>(null);
-  const [rows, setRows] = useState<ImportRow[]>([]);
   const [editingRow, setEditingRow] = useState<ImportRow | null>(null);
   const [editForm, setEditForm] = useState<ImportRowFormState>(EMPTY_ROW_FORM);
   const [editError, setEditError] = useState<string | null>(null);
-  const [editSaving, setEditSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [skuQuery, setSkuQuery] = useState('');
   const [skuResults, setSkuResults] = useState<ProductSearchResult[]>([]);
   const [skuSearching, setSkuSearching] = useState(false);
   const [isTemplateHelperOpen, setIsTemplateHelperOpen] = useState(false);
+  const [submitConfirmRow, setSubmitConfirmRow] = useState<ImportRow | null>(null);
 
   const { locations, loadBusinessLocations } = useBusinessLocations();
   const { searchProducts } = useProducts();
+  const {
+    batch,
+    rows,
+    errorMessage,
+    isUploading,
+    isSavingRow,
+    isProcessingRows,
+    loadLatestBatch,
+    uploadPreview,
+    updateRow,
+    processRow,
+    processReadyRows,
+    clearBatch,
+    setErrorMessage,
+  } = useOpeningStockImports();
 
   const firstLocation = locations[0];
 
@@ -230,42 +217,52 @@ export default function ImportOpeningStock() {
     };
   }, [searchProducts, skuQuery]);
 
-  const refreshBatch = async (batchId: string) => {
-    const response = await apiRequest<ImportPreviewResponse>(`/products/opening-stock/import/batches/${batchId}`);
-    setBatch(response.batch);
-    setRows(response.rows ?? []);
-  };
-
-  const loadLatestBatch = async () => {
-    try {
-      const response = await apiRequest<ImportPreviewResponse>('/products/opening-stock/import/batches/latest');
-      setBatch(response.batch);
-      setRows(response.rows ?? []);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 404) {
-        return;
-      }
-      const message = err instanceof ApiError ? err.message : 'Failed to load staged opening stock imports';
-      toast.error(message);
-    }
-  };
-
   useEffect(() => {
     void loadLatestBatch();
-  }, []);
+  }, [loadLatestBatch]);
 
   useEffect(() => {
     if (!selectedFile) {
       return;
     }
-    void handleUpload(selectedFile);
+    if (!selectedFile.name.toLowerCase().endsWith('.csv')) {
+      const message = 'Please upload a CSV file.';
+      setErrorMessage(message);
+      toast.error(message);
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+    void uploadPreview(selectedFile)
+      .then((payload) => {
+        toast.success(payload.message || 'Opening stock import preview loaded successfully');
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to upload opening stock import file';
+        toast.error(message);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFile]);
 
   const handleDownloadTemplate = async () => {
     setIsDownloading(true);
     try {
-      const { blob, filename } = await apiDownload('/products/opening-stock/import/template.csv');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api'}/products/opening-stock/import/template.csv`,
+        {
+          credentials: 'include',
+          cache: 'no-store',
+        },
+      );
+      if (!response.ok) {
+        throw new Error('Failed to download template');
+      }
+      const blob = await response.blob();
+      const contentDisposition = response.headers.get('content-disposition') || '';
+      const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+      const filename = filenameMatch?.[1];
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -276,57 +273,18 @@ export default function ImportOpeningStock() {
       URL.revokeObjectURL(url);
       toast.success('Template downloaded successfully');
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to download template';
+      const message = err instanceof Error ? err.message : 'Failed to download template';
       toast.error(message);
     } finally {
       setIsDownloading(false);
     }
   };
 
-  async function handleUpload(fileToUpload: File) {
-    setErrorMessage(null);
-
-    if (!fileToUpload.name.toLowerCase().endsWith('.csv')) {
-      const message = 'Please upload a CSV file.';
-      setErrorMessage(message);
-      toast.error(message);
+  const openEditRow = (row: ImportRow) => {
+    if (isProcessedStatus(row.status)) {
+      toast.error('Processed rows cannot be edited.');
       return;
     }
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5000/api'}/products/opening-stock/import/preview`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-        },
-      );
-
-      const payload = (await response.json()) as ImportPreviewResponse & { message?: string; errors?: Record<string, string> };
-
-      if (!response.ok) {
-        const message = payload?.message || 'Failed to upload opening stock import file';
-        throw new ApiError(message, response.status, payload);
-      }
-
-      setBatch(payload.batch);
-      setRows(payload.rows ?? []);
-      toast.success(payload.message || 'Opening stock import preview loaded successfully');
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to upload opening stock import file';
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      setIsUploading(false);
-    }
-  }
-
-  const openEditRow = (row: ImportRow) => {
     setEditingRow(row);
     setEditError(null);
     setEditForm({
@@ -343,68 +301,56 @@ export default function ImportOpeningStock() {
     setEditingRow(null);
     setEditForm(EMPTY_ROW_FORM);
     setEditError(null);
-    setEditSaving(false);
   };
 
   const handleSaveEditedRow = async () => {
     if (!batch || !editingRow) {
       return;
     }
+    if (isProcessedStatus(editingRow.status)) {
+      setEditError('This opening stock row has already been processed and cannot be edited.');
+      return;
+    }
 
-    setEditSaving(true);
     setEditError(null);
 
     try {
-      const response = await apiRequest<{ message: string; row: ImportRow; validationErrors: string[] }>(
-        `/products/opening-stock/import/batches/${batch.id}/rows/${editingRow.id}`,
-        {
-          method: 'PUT',
-          body: JSON.stringify({
-            sku: editForm.sku,
-            location: editForm.location,
-            quantity: editForm.quantity,
-            unitCostBeforeTax: editForm.unitCostBeforeTax,
-            lotNumber: editForm.lotNumber,
-            expiryDate: editForm.expiryDate,
-          }),
-        },
-      );
-
-      setRows((current) => current.map((item) => (item.id === response.row.id ? response.row : item)));
+      const response = await updateRow(batch.id, editingRow.id, {
+        sku: editForm.sku,
+        location: editForm.location,
+        quantity: editForm.quantity,
+        unitCostBeforeTax: editForm.unitCostBeforeTax,
+        lotNumber: editForm.lotNumber,
+        expiryDate: editForm.expiryDate,
+      });
       setEditingRow(null);
       setEditForm(EMPTY_ROW_FORM);
       toast.success(response.message || 'Row updated successfully');
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to update import row';
+      const message = err instanceof Error ? err.message : 'Failed to update import row';
       setEditError(message);
       toast.error(message);
-    } finally {
-      setEditSaving(false);
     }
   };
 
-  const handleImportRow = async (rowId: string) => {
+  const handleImportRow = async (row: ImportRow) => {
     if (!batch) {
       return;
     }
 
     try {
-      await apiRequest(`/products/opening-stock/import/batches/${batch.id}/rows/${rowId}/import`, {
-        method: 'POST',
-      });
-      await refreshBatch(batch.id);
-      toast.success('Opening stock imported successfully');
+      const response = await processRow(batch.id, row.id);
+      toast.success(response?.message || 'Opening stock processed successfully');
+      setSubmitConfirmRow(null);
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to import opening stock row';
+      const message = err instanceof Error ? err.message : 'Failed to process opening stock row';
       toast.error(message);
     }
   };
 
   const clearSelection = () => {
     setSelectedFile(null);
-    setBatch(null);
-    setRows([]);
-    setErrorMessage(null);
+    clearBatch();
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -422,18 +368,21 @@ export default function ImportOpeningStock() {
       };
     }
 
+    const rowErrors = editingRow.validationErrors ?? [];
     return {
-      sku: editingRow.validationErrors.filter((error) => /sku|product/i.test(error)),
-      location: editingRow.validationErrors.filter((error) => /location/i.test(error)),
-      quantity: editingRow.validationErrors.filter((error) => /quantity/i.test(error)),
-      unitCostBeforeTax: editingRow.validationErrors.filter((error) => /unit cost|cost/i.test(error)),
-      lotNumber: editingRow.validationErrors.filter((error) => /lot/i.test(error)),
-      expiryDate: editingRow.validationErrors.filter((error) => /expiry/i.test(error)),
+      sku: rowErrors.filter((error) => /sku|product/i.test(error)),
+      location: rowErrors.filter((error) => /location/i.test(error)),
+      quantity: rowErrors.filter((error) => /quantity/i.test(error)),
+      unitCostBeforeTax: rowErrors.filter((error) => /unit cost|cost/i.test(error)),
+      lotNumber: rowErrors.filter((error) => /lot/i.test(error)),
+      expiryDate: rowErrors.filter((error) => /expiry/i.test(error)),
     };
   }, [editingRow]);
 
-  const readyRows = rows.filter((row) => row.status === 'valid' && row.validationErrors.length === 0);
-  const invalidRows = rows.filter((row) => row.status === 'invalid' || row.validationErrors.length > 0);
+  const readyRows = rows.filter((row) => row.status === 'valid' && (row.validationErrors ?? []).length === 0);
+  const processedRows = rows.filter((row) => row.status === 'processed' || row.status === 'imported');
+  const invalidRows = rows.filter((row) => row.status === 'invalid' || (row.validationErrors ?? []).length > 0);
+  const readyRowIds = readyRows.map((row) => row.id);
 
   return (
     <div className="space-y-6 pb-10">
@@ -624,6 +573,37 @@ export default function ImportOpeningStock() {
           title="Preview Uploaded Products"
           description={`File: ${batch.fileName || 'Opening stock import'} · ${rows.length} row(s) loaded`}
         >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+              <span>
+                <span className="font-medium text-foreground">{readyRows.length}</span> ready to submit
+              </span>
+              <span>
+                <span className="font-medium text-foreground">{processedRows.length}</span> processed
+              </span>
+              <span>
+                <span className="font-medium text-foreground">{invalidRows.length}</span> need fixing
+              </span>
+            </div>
+            {readyRowIds.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void processReadyRows(batch.id, readyRowIds).then(() => {
+                    toast.success('Ready rows processed successfully');
+                  }).catch((err) => {
+                    const message = err instanceof Error ? err.message : 'Failed to process ready rows';
+                    toast.error(message);
+                  });
+                }}
+                disabled={isProcessingRows}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+              >
+                {isProcessingRows ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Submit Ready Rows
+              </button>
+            ) : null}
+          </div>
           <div className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-[1200px] divide-y divide-border text-sm">
@@ -682,24 +662,26 @@ export default function ImportOpeningStock() {
                             <button
                               type="button"
                               onClick={() => openEditRow(row)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted/60"
+                              disabled={isProcessedStatus(row.status)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
-                              Update
+                              {isProcessedStatus(row.status) ? 'Locked' : 'Update'}
                             </button>
                             {canImport ? (
                               <button
                                 type="button"
-                                onClick={() => handleImportRow(row.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
+                                onClick={() => setSubmitConfirmRow(row)}
+                                disabled={isProcessingRows}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
                               >
                                 <CheckCircle2 className="h-3.5 w-3.5" />
-                                Import
+                                Submit
                               </button>
                             ) : null}
-                            {row.status === 'imported' ? (
+                            {isProcessedStatus(row.status) ? (
                               <span className="inline-flex items-center rounded-lg bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                                Imported
+                                Processed
                               </span>
                             ) : null}
                           </div>
@@ -742,11 +724,11 @@ export default function ImportOpeningStock() {
                 </div>
               ) : null}
 
-              {editingRow.validationErrors.length > 0 ? (
+              {(editingRow.validationErrors ?? []).length > 0 ? (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   <p className="font-medium">Current validation issues</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5">
-                    {editingRow.validationErrors.map((error) => (
+                    {(editingRow.validationErrors ?? []).map((error) => (
                       <li key={error}>{error}</li>
                     ))}
                   </ul>
@@ -852,10 +834,10 @@ export default function ImportOpeningStock() {
               <button
                 type="button"
                 onClick={handleSaveEditedRow}
-                disabled={editSaving}
+                disabled={isSavingRow || isProcessedStatus(editingRow.status)}
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
               >
-                {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isSavingRow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Save Changes
               </button>
             </div>
@@ -863,11 +845,83 @@ export default function ImportOpeningStock() {
         </div>
       ) : null}
 
+      {submitConfirmRow ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-background shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Confirm Opening Stock Submission</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Review the row details before processing it into inventory.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSubmitConfirmRow(null)}
+                className="rounded-lg p-2 hover:bg-muted/60"
+                aria-label="Close confirmation"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-5">
+              <div className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="grid gap-3 text-sm">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Product</span>
+                    <span className="font-medium text-foreground">
+                      {formatValue(submitConfirmRow.sku || submitConfirmRow.rowData.sku || 'Unknown SKU')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Cost Price</span>
+                    <span className="font-medium text-foreground">
+                      {formatValue(submitConfirmRow.unitCostBeforeTax || submitConfirmRow.rowData.unit_cost_before_tax || '0')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Quantity</span>
+                    <span className="font-medium text-foreground">
+                      {Math.max(0, Number(submitConfirmRow.quantity || submitConfirmRow.rowData.quantity || 0))}
+                    </span>
+                  </div>
+                </div>
+                {Number(submitConfirmRow.quantity || submitConfirmRow.rowData.quantity || 0) < 0 ? (
+                  <p className="mt-3 text-xs text-rose-600">Quantity cannot be negative.</p>
+                ) : null}
+              </div>
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSubmitConfirmRow(null)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted/60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleImportRow(submitConfirmRow)}
+                  disabled={isProcessingRows || Number(submitConfirmRow.quantity || submitConfirmRow.rowData.quantity || 0) < 0}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {isProcessingRows ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Confirm & Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {batch ? (
         <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{readyRows.length}</span> ready row(s)
+          <span className="font-medium text-foreground">{readyRows.length}</span> ready to submit
           <span className="mx-2">•</span>
-          <span className="font-medium text-foreground">{invalidRows.length}</span> row(s) still need fixing
+          <span className="font-medium text-foreground">{processedRows.length}</span> processed
+          <span className="mx-2">•</span>
+          <span className="font-medium text-foreground">{invalidRows.length}</span> need fixing
         </div>
       ) : null}
     </div>

@@ -46,6 +46,7 @@ import CreatePurchaseReturn from './pages/business/purchases/CreatePurchaseRetur
 import EditPurchaseReturn from './pages/business/purchases/EditPurchaseReturn'
 import ImportProducts from './pages/business/products/ImportProducts'
 import ImportOpeningStock from './pages/business/products/ImportOpeningStock'
+import Customers from './pages/business/contacts/customers/Customers'
 
 function App() {
   return (
@@ -99,6 +100,10 @@ function App() {
           <Route path="/business/invoice-settings/create" element={<CreateInvoiceSettings />} />
           <Route path="/business/invoice-settings/:id/edit" element={<EditInvoiceSettings />} />
 
+
+          {/* CUSTOMERS */}
+          <Route path="/contacts/customers" element={<Customers />} />
+          <Route path="/contacts/suppliers/:id" element={<SupplierProfile />} />
 
           {/* CONTACTS */}
           <Route path="/contacts/suppliers" element={<Suppliers />} />
