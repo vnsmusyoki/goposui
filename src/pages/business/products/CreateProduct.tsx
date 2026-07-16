@@ -996,7 +996,7 @@ export default function CreateProduct() {
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSave = async (shouldResetAfterSave = false): Promise<boolean> => {
+  const handleSave = async (shouldResetAfterSave = false, goToOpeningStock = false): Promise<boolean> => {
     setIsSaving(true);
     setFormSubmitError(null);
     if (!validate()) {
@@ -1083,6 +1083,10 @@ export default function CreateProduct() {
       setErrors({});
       setFormSubmitError(null);
 
+      if (goToOpeningStock) {
+        navigate(`/products/${response.id}/opening-stock`);
+      }
+
       if (shouldResetAfterSave) {
         setFormData(INITIAL_FORM_STATE);
         setComboItems([]);
@@ -1123,10 +1127,7 @@ export default function CreateProduct() {
   };
 
   const handleSaveAndAddStock = async () => {
-    const saved = await handleSave(false);
-    if (saved) {
-      // In a real app this would redirect to the opening-stock form for the new product.
-    }
+    await handleSave(false, true);
   };
 
   const errorList = Object.values(errors).filter(Boolean) as string[];
@@ -2001,14 +2002,14 @@ export default function CreateProduct() {
             <span>Save &amp; Add Another</span>
           </button>
           <button
-            type="button"
-            onClick={() => void handleSaveAndAddStock()}
-            disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
-          >
-            <Package className="h-4 w-4" />
-            <span>Save &amp; Add Opening Stock</span>
-          </button>
+          type="button"
+          onClick={() => void handleSaveAndAddStock()}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-alt disabled:opacity-50"
+        >
+          <Package className="h-4 w-4" />
+          <span>Save &amp; Create Opening Stock</span>
+        </button>
           <button
             type="button"
             onClick={() => void handleSave()}

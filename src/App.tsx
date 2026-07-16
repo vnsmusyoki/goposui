@@ -45,6 +45,7 @@ import PurchaseOrderReturns from './pages/business/purchases/PurchaseOrderReturn
 import CreatePurchaseReturn from './pages/business/purchases/CreatePurchaseReturn'
 import EditPurchaseReturn from './pages/business/purchases/EditPurchaseReturn'
 import ImportProducts from './pages/business/products/ImportProducts'
+import ImportOpeningStock from './pages/business/products/ImportOpeningStock'
 
 function App() {
   return (
@@ -107,7 +108,9 @@ function App() {
           {/* PRODUCTS */}
           <Route path="/products/list" element={<ProductsList />} />
           <Route path="/products/create" element={<CreateProduct />} />
+          <Route path="/products/opening-stock" element={<CreateProduct />} />
           <Route path="/products/import" element={<ImportProducts />} />
+          <Route path="/products/import-opening-stock" element={<ImportOpeningStock />} />
           <Route path="/products/:id/edit" element={<EditProduct />} />
           <Route path="/products/:id/view" element={<ProductDetails />} />
           <Route path="/products/:id/opening-stock" element={<ProductOpeningStock />} />
