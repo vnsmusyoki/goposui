@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -35,6 +35,7 @@ export default function DatePickerField({
   disabled = false,
 }: DatePickerFieldProps) {
   const selectedDate = value ? new Date(`${value}T00:00:00`) : null;
+  const [isOpen, setIsOpen] = useState(false);
   const popperContainer = usePortal
     ? ({ children }: { children?: ReactNode }) => {
         if (typeof document === 'undefined') {
@@ -49,7 +50,13 @@ export default function DatePickerField({
       <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <DatePicker
         selected={selectedDate}
-        onChange={(date: Date | null) => onChange(date ? formatLocalDate(date) : '')}
+        open={isOpen}
+        onCalendarOpen={() => setIsOpen(true)}
+        onCalendarClose={() => setIsOpen(false)}
+        onChange={(date: Date | null) => {
+          onChange(date ? formatLocalDate(date) : '');
+          setIsOpen(false);
+        }}
         disabled={disabled}
         dateFormat="yyyy-MM-dd"
         placeholderText={placeholder}

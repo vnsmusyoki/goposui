@@ -821,6 +821,7 @@ export default function CreateSaleOrder() {
 
     try {
       const payload = {
+        customer_id: formData.customerId,
         customer_name: selectedCustomer?.displayName || selectedCustomer?.name || selectedCustomer?.companyName || '',
         customer_phone: selectedCustomer?.phone || '',
         customer_email: selectedCustomer?.email || '',
