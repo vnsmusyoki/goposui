@@ -490,26 +490,39 @@ function CustomerFormModal({
         ) : null}
 
         <div className="space-y-5">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SectionCard icon={UserRound} title="Customer Identity" description="Use the code, name, and company fields to onboard the customer.">
-              <div className="space-y-4">
+          <div className=" bg-card p-2">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <UserRound className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-semibold text-foreground">Customer Identity</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use the code, names, and company details to identify the customer record.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div>
                   <FieldLabel>Customer Code</FieldLabel>
                   <Input value={form.customerCode} onChange={(value) => setForm((current) => ({ ...current, customerCode: value }))} />
                 </div>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div>
-                    <FieldLabel>First Name</FieldLabel>
-                    <Input value={form.firstName} onChange={(value) => setForm((current) => ({ ...current, firstName: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Middle Name</FieldLabel>
-                    <Input value={form.middleName} onChange={(value) => setForm((current) => ({ ...current, middleName: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Last Name</FieldLabel>
-                    <Input value={form.lastName} onChange={(value) => setForm((current) => ({ ...current, lastName: value }))} />
-                  </div>
+                <div>
+                  <FieldLabel>First Name</FieldLabel>
+                  <Input value={form.firstName} onChange={(value) => setForm((current) => ({ ...current, firstName: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Middle Name</FieldLabel>
+                  <Input value={form.middleName} onChange={(value) => setForm((current) => ({ ...current, middleName: value }))} />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Last Name</FieldLabel>
+                  <Input value={form.lastName} onChange={(value) => setForm((current) => ({ ...current, lastName: value }))} />
                 </div>
                 <div>
                   <FieldLabel>Company Name</FieldLabel>
@@ -519,46 +532,60 @@ function CustomerFormModal({
                     placeholder="Optional for personal customers"
                   />
                 </div>
-                <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Active</p>
-                    <p className="text-xs text-muted-foreground">Inactive customers remain in history but are hidden from active operations.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setForm((current) => ({ ...current, isActive: !current.isActive }))}
-                    className={`inline-flex h-8 w-14 items-center rounded-full px-1 transition ${
-                      form.isActive ? 'bg-primary justify-end' : 'bg-muted justify-start'
-                    }`}
-                    aria-pressed={form.isActive}
-                  >
-                    <span className="h-6 w-6 rounded-full bg-white shadow" />
-                  </button>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Active</p>
+                  <p className="text-xs text-muted-foreground">Inactive customers remain in history but are hidden from active operations.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm((current) => ({ ...current, isActive: !current.isActive }))}
+                  className={`inline-flex h-8 w-14 items-center rounded-full px-1 transition ${
+                    form.isActive ? 'bg-primary justify-end' : 'bg-muted justify-start'
+                  }`}
+                  aria-pressed={form.isActive}
+                >
+                  <span className="h-6 w-6 rounded-full bg-white shadow" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card p-2">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Phone className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-semibold text-foreground">Contact & Financials</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Keep the customer phone, email, address, and balance details in one place.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <PhoneNumberInput
+                  label="Phone"
+                  required
+                  value={form.phone}
+                  onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
+                  helperText="Starts with 0 and must contain 10 digits."
+                />
+                <div>
+                  <FieldLabel>Email</FieldLabel>
+                  <Input value={form.email} onChange={(value) => setForm((current) => ({ ...current, email: value }))} />
                 </div>
               </div>
-            </SectionCard>
 
-            <SectionCard icon={Phone} title="Contact & Notes" description="Keep the customer phone, email, and location details handy.">
-              <div className="space-y-5">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <PhoneNumberInput
-                    label="Phone"
-                    required
-                    value={form.phone}
-                    onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
-                    helperText="Starts with 0 and must contain 10 digits."
-                  />
-                  <div>
-                    <FieldLabel>Email</FieldLabel>
-                    <Input value={form.email} onChange={(value) => setForm((current) => ({ ...current, email: value }))} />
-                  </div>
-                </div>
-
+              <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <FieldLabel>Address</FieldLabel>
                   <TextArea value={form.address} onChange={(value) => setForm((current) => ({ ...current, address: value }))} />
                 </div>
-
                 <div>
                   <FieldLabel>Shipping Address</FieldLabel>
                   <TextArea
@@ -567,97 +594,110 @@ function CustomerFormModal({
                     placeholder="Optional shipping destination"
                   />
                 </div>
+              </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel>Tax Number</FieldLabel>
-                    <Input value={form.taxNumber} onChange={(value) => setForm((current) => ({ ...current, taxNumber: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Customer Group</FieldLabel>
-                    <Input value={form.customerGroup} onChange={(value) => setForm((current) => ({ ...current, customerGroup: value }))} />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel>Opening Balance</FieldLabel>
-                    <Input
-                      type="number"
-                      value={form.openingBalance}
-                      onChange={(value) => setForm((current) => ({ ...current, openingBalance: value }))}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel>Credit Limit</FieldLabel>
-                    <Input
-                      type="number"
-                      value={form.creditLimit}
-                      onChange={(value) => setForm((current) => ({ ...current, creditLimit: value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <FieldLabel>Advance Balance</FieldLabel>
-                    <Input
-                      type="number"
-                      value={form.advanceBalance}
-                      onChange={(value) => setForm((current) => ({ ...current, advanceBalance: value }))}
-                    />
-                  </div>
-                  <div>
-                    <FieldLabel>Pay Terms Type</FieldLabel>
-                    <select
-                      value={form.payTermsType}
-                      onChange={(event) => setForm((current) => ({ ...current, payTermsType: event.target.value }))}
-                      className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10"
-                    >
-                      <option value="">Select</option>
-                      <option value="days">Days</option>
-                      <option value="months">Months</option>
-                    </select>
-                  </div>
-                  <div>
-                    <FieldLabel>Pay Terms Value</FieldLabel>
-                    <Input
-                      type="number"
-                      value={form.payTermsValue}
-                      onChange={(value) => setForm((current) => ({ ...current, payTermsValue: value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <FieldLabel>Custom Field 1</FieldLabel>
-                    <Input value={form.customField1} onChange={(value) => setForm((current) => ({ ...current, customField1: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Custom Field 2</FieldLabel>
-                    <Input value={form.customField2} onChange={(value) => setForm((current) => ({ ...current, customField2: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Custom Field 3</FieldLabel>
-                    <Input value={form.customField3} onChange={(value) => setForm((current) => ({ ...current, customField3: value }))} />
-                  </div>
-                  <div>
-                    <FieldLabel>Custom Field 4</FieldLabel>
-                    <Input value={form.customField4} onChange={(value) => setForm((current) => ({ ...current, customField4: value }))} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <FieldLabel>Custom Field 5</FieldLabel>
-                    <Input value={form.customField5} onChange={(value) => setForm((current) => ({ ...current, customField5: value }))} />
-                  </div>
-                </div>
-
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div>
-                  <FieldLabel>Notes</FieldLabel>
-                  <TextArea value={form.notes} onChange={(value) => setForm((current) => ({ ...current, notes: value }))} />
+                  <FieldLabel>Tax Number</FieldLabel>
+                  <Input value={form.taxNumber} onChange={(value) => setForm((current) => ({ ...current, taxNumber: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Customer Group</FieldLabel>
+                  <Input value={form.customerGroup} onChange={(value) => setForm((current) => ({ ...current, customerGroup: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Opening Balance</FieldLabel>
+                  <Input
+                    type="number"
+                    value={form.openingBalance}
+                    onChange={(value) => setForm((current) => ({ ...current, openingBalance: value }))}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Credit Limit</FieldLabel>
+                  <Input
+                    type="number"
+                    value={form.creditLimit}
+                    onChange={(value) => setForm((current) => ({ ...current, creditLimit: value }))}
+                  />
                 </div>
               </div>
-            </SectionCard>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <FieldLabel>Advance Balance</FieldLabel>
+                  <Input
+                    type="number"
+                    value={form.advanceBalance}
+                    onChange={(value) => setForm((current) => ({ ...current, advanceBalance: value }))}
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Pay Terms Type</FieldLabel>
+                  <select
+                    value={form.payTermsType}
+                    onChange={(event) => setForm((current) => ({ ...current, payTermsType: event.target.value }))}
+                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/10"
+                  >
+                    <option value="">Select</option>
+                    <option value="days">Days</option>
+                    <option value="months">Months</option>
+                  </select>
+                </div>
+                <div>
+                  <FieldLabel>Pay Terms Value</FieldLabel>
+                  <Input
+                    type="number"
+                    value={form.payTermsValue}
+                    onChange={(value) => setForm((current) => ({ ...current, payTermsValue: value }))}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card p-4">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <FileText className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-semibold text-foreground">Custom Fields & Notes</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Keep extra customer details and internal notes together for quick reference.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <FieldLabel>Custom Field 1</FieldLabel>
+                  <Input value={form.customField1} onChange={(value) => setForm((current) => ({ ...current, customField1: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Custom Field 2</FieldLabel>
+                  <Input value={form.customField2} onChange={(value) => setForm((current) => ({ ...current, customField2: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Custom Field 3</FieldLabel>
+                  <Input value={form.customField3} onChange={(value) => setForm((current) => ({ ...current, customField3: value }))} />
+                </div>
+                <div>
+                  <FieldLabel>Custom Field 4</FieldLabel>
+                  <Input value={form.customField4} onChange={(value) => setForm((current) => ({ ...current, customField4: value }))} />
+                </div>
+                <div className="md:col-span-2">
+                  <FieldLabel>Custom Field 5</FieldLabel>
+                  <Input value={form.customField5} onChange={(value) => setForm((current) => ({ ...current, customField5: value }))} />
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel>Notes</FieldLabel>
+                <TextArea value={form.notes} onChange={(value) => setForm((current) => ({ ...current, notes: value }))} />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1231,7 +1271,7 @@ export default function Customers() {
       case 'sales':
       case 'documents-notes':
       case 'view':
-        toast(`Customer ${action.replace('-', ' ')} action is available in the next step.`);
+        navigate(`/contacts/customers/${customer.id}`)
         return;
       default:
         return;

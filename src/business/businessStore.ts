@@ -13,6 +13,7 @@ export type BusinessSettingsRecord = {
   logoUrl: string;
   financialYearStartMonth: string;
   stockAccountingMethod: string;
+  preserveSaleOrderRequests: boolean;
   transactionEditDays: number | null;
   dateFormat: string;
   timeFormat: string;
@@ -32,6 +33,7 @@ export type UpdateBusinessSettingsInput = {
   logoUrl: string;
   financialYearStartMonth: string;
   stockAccountingMethod: string;
+  preserveSaleOrderRequests: boolean;
   transactionEditDays: number;
   dateFormat: string;
   timeFormat: string;
@@ -50,6 +52,7 @@ type BusinessSettingsApiResponse = {
   logoUrl: string;
   financialYearStartMonth: string;
   stockAccountingMethod: string;
+  preserveSaleOrderRequests?: boolean;
   transactionEditDays?: number | null;
   dateFormat: string;
   timeFormat: string;
@@ -81,6 +84,7 @@ function normalizeBusinessSettings(response: BusinessSettingsApiResponse): Busin
     logoUrl: response.logoUrl ?? '',
     financialYearStartMonth: response.financialYearStartMonth,
     stockAccountingMethod: response.stockAccountingMethod,
+    preserveSaleOrderRequests: Boolean(response.preserveSaleOrderRequests),
     transactionEditDays: typeof response.transactionEditDays === 'number' ? response.transactionEditDays : null,
     dateFormat: response.dateFormat,
     timeFormat: response.timeFormat,

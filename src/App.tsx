@@ -47,6 +47,9 @@ import EditPurchaseReturn from './pages/business/purchases/EditPurchaseReturn'
 import ImportProducts from './pages/business/products/ImportProducts'
 import ImportOpeningStock from './pages/business/products/ImportOpeningStock'
 import Customers from './pages/business/contacts/customers/Customers'
+import CustomerProfile from './pages/business/contacts/customers/CustomerProfile'
+import SalesOrders from './pages/business/sales/SalesOrders'
+import CreateSaleOrder from './pages/business/sales/CreateSaleOrder'
 
 function App() {
   return (
@@ -103,7 +106,7 @@ function App() {
 
           {/* CUSTOMERS */}
           <Route path="/contacts/customers" element={<Customers />} />
-          <Route path="/contacts/suppliers/:id" element={<SupplierProfile />} />
+          <Route path="/contacts/customers/:id" element={<CustomerProfile />} />
 
           {/* CONTACTS */}
           <Route path="/contacts/suppliers" element={<Suppliers />} />
@@ -129,6 +132,12 @@ function App() {
           <Route path="/purchases/orders/:id/view" element={<PurchaseOrderDetails />} />
           <Route path="/purchases/orders/:id/edit" element={<EditPurchaseOrder />} />
           <Route path="/purchases/orders/:id/update-status" element={<UpdatePurchaseOrderStatus />} />
+
+
+
+          {/* SELLS */}
+           <Route path="/sales/order" element={<SalesOrders />} />
+           <Route path="/sales/order/create" element={<CreateSaleOrder />} />
         </Route>
       </Route>
 

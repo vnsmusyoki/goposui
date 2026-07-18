@@ -9,6 +9,10 @@ export type ProductSearchResult = {
   sellingPrice: number;
   purchasePrice?: number;
   taxRate?: number;
+  currentStock?: number;
+  taxType?: 'exclusive' | 'inclusive' | 'none';
+  purchasePriceExclusive?: number;
+  purchasePriceInclusive?: number;
   productType: 'single' | 'combo' | 'variable';
 };
 
@@ -35,6 +39,7 @@ export type ProductListItem = {
   taxType: 'exclusive' | 'inclusive' | 'none';
   taxRate: number;
   defaultPurchasePrice: number;
+  profitAmount: number;
   defaultSellingPrice: number;
   profitMargin: number;
   currentStock: number;
@@ -123,6 +128,7 @@ export type ProductDetailItem = ProductListItem & {
     locationName: string;
   }>;
   purchasePriceExclusive: number;
+  profitAmount: number;
   purchasePriceInclusive: number;
   images: ProductImageItem[];
   comboItems: ProductComboItem[];

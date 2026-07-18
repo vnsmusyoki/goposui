@@ -33,6 +33,7 @@ type BusinessFormState = {
   logoUrl: string;
   financialYearStartMonth: string;
   stockAccountingMethod: string;
+  preserveSaleOrderRequests: boolean;
   transactionEditDays: string;
   dateFormat: string;
   timeFormat: string;
@@ -176,6 +177,7 @@ const initialForm: BusinessFormState = {
   logoUrl: '',
   financialYearStartMonth: 'January',
   stockAccountingMethod: 'FIFO',
+  preserveSaleOrderRequests: false,
   transactionEditDays: '',
   dateFormat: 'DD/MM/YYYY',
   timeFormat: '12 Hour',
@@ -357,6 +359,7 @@ export default function BusinessSettingsBusinessTab() {
       logoUrl: form.logoUrl.trim(),
       financialYearStartMonth: form.financialYearStartMonth.trim(),
       stockAccountingMethod: form.stockAccountingMethod.trim(),
+      preserveSaleOrderRequests: form.preserveSaleOrderRequests,
       transactionEditDays: Number(form.transactionEditDays),
       dateFormat: form.dateFormat.trim(),
       timeFormat: form.timeFormat.trim(),
@@ -574,7 +577,7 @@ export default function BusinessSettingsBusinessTab() {
               title="Inventory & Transactions"
               description="Stock valuation rules and how far back transactions can be edited."
             >
-              <div className="grid gap-5 md:grid-cols-3 xl:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                 <SelectField
                   label="Stock Accounting Method"
                   value={stockAccountingOptions.find((option) => option.value === form.stockAccountingMethod) ?? null}
@@ -583,6 +586,32 @@ export default function BusinessSettingsBusinessTab() {
                   onChange={(option) => option && updateField('stockAccountingMethod', option.value)}
                   required
                 />
+
+                <div className="rounded-xl border border-border bg-background p-4 md:col-span-1 xl:col-span-1">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Preserve Sale Order Requests</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Keep approved sale orders reserved instead of consuming stock immediately.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.preserveSaleOrderRequests}
+                      onClick={() => updateField('preserveSaleOrderRequests', !form.preserveSaleOrderRequests)}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                        form.preserveSaleOrderRequests ? 'bg-primary' : 'bg-muted'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition-transform ${
+                          form.preserveSaleOrderRequests ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
 
                 <Field
                   label="Quantity Precision"
@@ -680,6 +709,7 @@ function settingsToForm(settings: BusinessSettingsRecord): BusinessFormState {
     logoUrl: settings.logoUrl || '',
     financialYearStartMonth: settings.financialYearStartMonth || initialForm.financialYearStartMonth,
     stockAccountingMethod: settings.stockAccountingMethod || initialForm.stockAccountingMethod,
+    preserveSaleOrderRequests: settings.preserveSaleOrderRequests ?? initialForm.preserveSaleOrderRequests,
     transactionEditDays:
       typeof settings.transactionEditDays === 'number' ? String(settings.transactionEditDays) : '',
     dateFormat: settings.dateFormat || initialForm.dateFormat,
@@ -704,6 +734,7 @@ function mapApiErrorsToFormErrors(apiErrors: Record<string, string>): ErrorState
     logoUrl: 'logoUrl',
     financialYearStartMonth: 'financialYearStartMonth',
     stockAccountingMethod: 'stockAccountingMethod',
+    preserveSaleOrderRequests: 'preserveSaleOrderRequests',
     transactionEditDays: 'transactionEditDays',
     dateFormat: 'dateFormat',
     timeFormat: 'timeFormat',

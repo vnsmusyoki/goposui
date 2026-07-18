@@ -315,6 +315,86 @@ function moneyInputToNumber(value: string) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 10000) / 10000;
+}
+
+function roundPercentage(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function getTaxMultiplier(taxRate: number) {
+  return 1 + Math.max(0, taxRate) / 100;
+}
+
+function getBeforeTaxSellingPrice(sellingPrice: number, taxType: TaxType, taxRate: number) {
+  if (taxType === 'inclusive') {
+    const multiplier = getTaxMultiplier(taxRate);
+    return multiplier > 0 ? roundMoney(sellingPrice / multiplier) : roundMoney(sellingPrice);
+  }
+
+  return roundMoney(sellingPrice);
+}
+
+function getTaxAmount(sellingPriceBeforeTax: number, taxType: TaxType, taxRate: number) {
+  if (taxType === 'none') {
+    return 0;
+  }
+
+  return roundMoney(sellingPriceBeforeTax * (Math.max(0, taxRate) / 100));
+}
+
+function getFinalCustomerPrice(sellingPriceBeforeTax: number, taxType: TaxType, taxRate: number) {
+  if (taxType === 'none') {
+    return roundMoney(sellingPriceBeforeTax);
+  }
+
+  return roundMoney(sellingPriceBeforeTax + getTaxAmount(sellingPriceBeforeTax, taxType, taxRate));
+}
+
+function calculateSuggestedPricing(costPrice: number, profitPercentage: number, taxType: TaxType, taxRate: number) {
+  const normalizedCost = Math.max(0, costPrice);
+  const normalizedProfitPercentage = Math.max(0, profitPercentage);
+  const profitAmount = roundMoney(normalizedCost * (normalizedProfitPercentage / 100));
+  const sellingPriceBeforeTax = roundMoney(normalizedCost + profitAmount);
+  const finalCustomerPrice = getFinalCustomerPrice(sellingPriceBeforeTax, taxType, taxRate);
+  const displaySellingPrice = taxType === 'inclusive' ? finalCustomerPrice : sellingPriceBeforeTax;
+  const taxAmount = taxType === 'none' ? 0 : roundMoney(finalCustomerPrice - sellingPriceBeforeTax);
+
+  return {
+    profitAmount,
+    profitPercentage: normalizedCost > 0 ? normalizedProfitPercentage : 0,
+    sellingPriceBeforeTax,
+    taxAmount,
+    finalCustomerPrice,
+    displaySellingPrice,
+  };
+}
+
+function calculateDerivedPricingFromSellingPrice(
+  costPrice: number,
+  sellingPrice: number,
+  taxType: TaxType,
+  taxRate: number,
+) {
+  const normalizedCost = Math.max(0, costPrice);
+  const normalizedSellingPrice = Math.max(0, sellingPrice);
+  const sellingPriceBeforeTax = getBeforeTaxSellingPrice(normalizedSellingPrice, taxType, taxRate);
+  const profitAmount = roundMoney(sellingPriceBeforeTax - normalizedCost);
+  const profitPercentage = normalizedCost > 0 ? roundPercentage((profitAmount / normalizedCost) * 100) : 0;
+  const finalCustomerPrice = getFinalCustomerPrice(sellingPriceBeforeTax, taxType, taxRate);
+  const taxAmount = taxType === 'none' ? 0 : roundMoney(finalCustomerPrice - sellingPriceBeforeTax);
+
+  return {
+    profitAmount,
+    profitPercentage,
+    sellingPriceBeforeTax,
+    taxAmount,
+    finalCustomerPrice,
+    displaySellingPrice: taxType === 'inclusive' ? finalCustomerPrice : sellingPriceBeforeTax,
+  };
+}
+
 function getCurrencySymbol(currencyCode?: string) {
   if (!currencyCode) return '$';
 
@@ -482,7 +562,7 @@ export default function CreateProduct() {
   const [brochureUploadError, setBrochureUploadError] = useState<string | null>(null);
   const [formSubmitError, setFormSubmitError] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<ProductImage | null>(null);
-  const [purchasePriceInput, setPurchasePriceInput] = useState('');
+  const [costPriceInput, setCostPriceInput] = useState('');
   const [sellingPriceInput, setSellingPriceInput] = useState('');
   const [isSellingPriceManual, setIsSellingPriceManual] = useState(false);
   const [hasAppliedBusinessProfit, setHasAppliedBusinessProfit] = useState(false);
@@ -502,13 +582,26 @@ export default function CreateProduct() {
     }
 
     if (typeof businessSettings?.defaultProfitPercentage === 'number') {
-      setFormData((prev) => ({ ...prev, profitMargin: businessSettings.defaultProfitPercentage ?? 0 }));
-      if (!isSellingPriceManual) {
-        setSellingPriceInput('');
+      const defaultProfitPercentage = businessSettings.defaultProfitPercentage ?? 0;
+      setFormData((prev) => ({ ...prev, profitMargin: defaultProfitPercentage }));
+      if (!isSellingPriceManual && formData.defaultPurchasePrice > 0) {
+        const pricing = calculateSuggestedPricing(
+          formData.defaultPurchasePrice,
+          defaultProfitPercentage,
+          formData.taxType,
+          formData.taxRate,
+        );
+        setFormData((prev) => ({
+          ...prev,
+          purchasePriceExclusive: pricing.sellingPriceBeforeTax,
+          purchasePriceInclusive: pricing.finalCustomerPrice,
+          defaultSellingPrice: pricing.displaySellingPrice,
+        }));
+        setSellingPriceInput(String(pricing.displaySellingPrice));
       }
       setHasAppliedBusinessProfit(true);
     }
-  }, [businessSettings?.defaultProfitPercentage, hasAppliedBusinessProfit, isSellingPriceManual]);
+  }, [businessSettings?.defaultProfitPercentage, formData.defaultPurchasePrice, formData.taxRate, formData.taxType, hasAppliedBusinessProfit, isSellingPriceManual]);
 
   useEffect(() => {
     if (formData.productType === 'combo' && !comboSellingPriceManual) {
@@ -539,71 +632,71 @@ export default function CreateProduct() {
     setFormData((prev) => ({ ...prev, warranty: { ...prev.warranty, [field]: value } }));
   };
 
-  const calculatePrices = (purchasePrice: number, taxRate: number, profitMargin: number) => ({
-    exclusive: purchasePrice,
-    inclusive: purchasePrice * (1 + taxRate / 100),
-    suggestedSellingPrice: purchasePrice * (1 + profitMargin / 100),
-  });
-
-  const handlePurchasePriceChange = (rawValue: string) => {
-    const normalizedValue = normalizeMoneyInput(rawValue);
-    const purchasePrice = moneyInputToNumber(normalizedValue);
-    const { exclusive, inclusive, suggestedSellingPrice } = calculatePrices(
-      purchasePrice,
-      formData.taxRate,
-      formData.profitMargin,
-    );
-
-    setPurchasePriceInput(normalizedValue);
+  const syncPricingFromSuggestedValues = (costPrice: number, profitPercentage: number, taxType: TaxType, taxRate: number) => {
+    const pricing = calculateSuggestedPricing(costPrice, profitPercentage, taxType, taxRate);
     setFormData((prev) => ({
       ...prev,
-      defaultPurchasePrice: purchasePrice,
-      purchasePriceExclusive: exclusive,
-      purchasePriceInclusive: inclusive,
-      defaultSellingPrice: isSellingPriceManual ? prev.defaultSellingPrice : suggestedSellingPrice,
+      defaultPurchasePrice: costPrice,
+      purchasePriceExclusive: pricing.sellingPriceBeforeTax,
+      purchasePriceInclusive: pricing.finalCustomerPrice,
+      profitMargin: pricing.profitPercentage,
+      defaultSellingPrice: pricing.displaySellingPrice,
     }));
+    setCostPriceInput(costPrice > 0 ? String(costPrice) : '');
+    setSellingPriceInput(costPrice > 0 ? String(pricing.displaySellingPrice) : '');
+  };
 
-    if (!isSellingPriceManual) {
-      setSellingPriceInput(purchasePrice > 0 ? String(suggestedSellingPrice) : '');
+  const syncPricingFromManualSellingPrice = (costPrice: number, sellingPrice: number, taxType: TaxType, taxRate: number) => {
+    const pricing = calculateDerivedPricingFromSellingPrice(costPrice, sellingPrice, taxType, taxRate);
+    setFormData((prev) => ({
+      ...prev,
+      defaultPurchasePrice: costPrice,
+      purchasePriceExclusive: pricing.sellingPriceBeforeTax,
+      purchasePriceInclusive: pricing.finalCustomerPrice,
+      profitMargin: pricing.profitPercentage,
+      defaultSellingPrice: sellingPrice,
+    }));
+  };
+
+  const handleCostPriceChange = (rawValue: string) => {
+    const normalizedValue = normalizeMoneyInput(rawValue);
+    const costPrice = moneyInputToNumber(normalizedValue);
+    setCostPriceInput(normalizedValue);
+
+    if (isSellingPriceManual) {
+      syncPricingFromManualSellingPrice(costPrice, moneyInputToNumber(sellingPriceInput), formData.taxType, formData.taxRate);
+      return;
     }
+
+    syncPricingFromSuggestedValues(costPrice, formData.profitMargin, formData.taxType, formData.taxRate);
   };
 
   const handleTaxRateChange = (rate: number) => {
-    const { exclusive, inclusive, suggestedSellingPrice } = calculatePrices(
-      formData.defaultPurchasePrice,
-      rate,
-      formData.profitMargin,
-    );
-    setFormData((prev) => ({
-      ...prev,
-      taxRate: rate,
-      purchasePriceExclusive: exclusive,
-      purchasePriceInclusive: inclusive,
-      defaultSellingPrice: isSellingPriceManual ? prev.defaultSellingPrice : suggestedSellingPrice,
-    }));
+    setFormData((prev) => ({ ...prev, taxRate: rate }));
 
-    if (!isSellingPriceManual) {
-      setSellingPriceInput(formData.defaultPurchasePrice > 0 ? String(suggestedSellingPrice) : '');
+    if (isSellingPriceManual) {
+      syncPricingFromManualSellingPrice(formData.defaultPurchasePrice, moneyInputToNumber(sellingPriceInput), formData.taxType, rate);
+      return;
     }
+
+    syncPricingFromSuggestedValues(formData.defaultPurchasePrice, formData.profitMargin, formData.taxType, rate);
   };
 
   const handleProfitMarginChange = (margin: number) => {
-    const { exclusive, inclusive, suggestedSellingPrice } = calculatePrices(
-      formData.defaultPurchasePrice,
-      formData.taxRate,
-      margin,
-    );
-    setFormData((prev) => ({
-      ...prev,
-      profitMargin: margin,
-      purchasePriceExclusive: exclusive,
-      purchasePriceInclusive: inclusive,
-      defaultSellingPrice: isSellingPriceManual ? prev.defaultSellingPrice : suggestedSellingPrice,
-    }));
+    setFormData((prev) => ({ ...prev, profitMargin: margin }));
+    setIsSellingPriceManual(false);
+    syncPricingFromSuggestedValues(formData.defaultPurchasePrice, margin, formData.taxType, formData.taxRate);
+  };
 
-    if (!isSellingPriceManual) {
-      setSellingPriceInput(formData.defaultPurchasePrice > 0 ? String(suggestedSellingPrice) : '');
+  const handleTaxTypeChange = (taxType: TaxType) => {
+    setFormData((prev) => ({ ...prev, taxType }));
+
+    if (isSellingPriceManual) {
+      syncPricingFromManualSellingPrice(formData.defaultPurchasePrice, moneyInputToNumber(sellingPriceInput), taxType, formData.taxRate);
+      return;
     }
+
+    syncPricingFromSuggestedValues(formData.defaultPurchasePrice, formData.profitMargin, taxType, formData.taxRate);
   };
 
   const handleSellingPriceChange = (rawValue: string) => {
@@ -611,10 +704,7 @@ export default function CreateProduct() {
     const sellingPrice = moneyInputToNumber(normalizedValue);
     setIsSellingPriceManual(true);
     setSellingPriceInput(normalizedValue);
-    setFormData((prev) => ({
-      ...prev,
-      defaultSellingPrice: sellingPrice,
-    }));
+    syncPricingFromManualSellingPrice(formData.defaultPurchasePrice, sellingPrice, formData.taxType, formData.taxRate);
   };
 
   const resetComboDraft = () => {
@@ -1091,7 +1181,7 @@ export default function CreateProduct() {
         setFormData(INITIAL_FORM_STATE);
         setComboItems([]);
         setVariants([]);
-        setPurchasePriceInput('');
+        setCostPriceInput('');
         setSellingPriceInput('');
         setComboSellingPriceInput('');
         setComboSellingPriceManual(false);
@@ -1104,18 +1194,24 @@ export default function CreateProduct() {
       setIsSaving(false);
       return true;
     } catch (err) {
+      let errorMessage = 'Unable to save product.';
+
       if (err instanceof ApiError) {
-        setFormSubmitError(err.message);
+        errorMessage = err.message || errorMessage;
+        setFormSubmitError(errorMessage);
       } else if (err instanceof Error) {
-        setFormSubmitError(err.message);
+        errorMessage = err.message || errorMessage;
+        setFormSubmitError(errorMessage);
       } else {
-        setFormSubmitError('Unable to save product.');
+        setFormSubmitError(errorMessage);
       }
 
       const apiErrors = err instanceof ApiError ? (err.data as { errors?: Record<string, string> } | undefined)?.errors : undefined;
       if (apiErrors) {
         setErrors(apiErrors);
       }
+
+      toast.error(errorMessage);
 
       setIsSaving(false);
       return false;
@@ -1610,13 +1706,18 @@ export default function CreateProduct() {
               <FieldLabel>Tax Type</FieldLabel>
               <select
                 value={formData.taxType}
-                onChange={(e) => handleChange('taxType', e.target.value as TaxType)}
+                onChange={(e) => handleTaxTypeChange(e.target.value as TaxType)}
                 className={baseSelectClass}
               >
                 <option value="exclusive">Exclusive of Tax</option>
                 <option value="inclusive">Inclusive of Tax</option>
                 <option value="none">No Tax</option>
               </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formData.taxType === 'exclusive' && 'Tax will be added on top of the selling price during the sale.'}
+                {formData.taxType === 'inclusive' && 'The entered selling price already includes tax.'}
+                {formData.taxType === 'none' && 'No tax will be applied to this product.'}
+              </p>
             </div>
 
             <div>
@@ -1634,22 +1735,25 @@ export default function CreateProduct() {
             </div>
 
             <div>
-              <FieldLabel>Default Purchase Price</FieldLabel>
+              <FieldLabel>Cost Price (Before Tax)</FieldLabel>
               <MoneyInput
-                value={purchasePriceInput}
-                onChange={handlePurchasePriceChange}
+                value={costPriceInput}
+                onChange={handleCostPriceChange}
                 onFocus={(e) => e.currentTarget.select()}
                 currencyCode={currencyCode}
                 currencyPrecision={currencyPrecision}
                 currencyPlacement={currencyPlacement}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                How much you bought a unit item of this product.
+                The amount the business pays the supplier for one unit of this product, excluding tax.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                This value is used to calculate the suggested selling price and expected profit.
               </p>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Purchase Price (Exclusive)</label>
+              <label className="text-sm font-medium text-muted-foreground">Selling Price Before Tax</label>
               <input
                 type="text"
                 value={formatMoney(formData.purchasePriceExclusive, currencyCode, currencyPrecision, currencyPlacement, false)}
@@ -1659,7 +1763,7 @@ export default function CreateProduct() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Purchase Price (Inclusive)</label>
+              <label className="text-sm font-medium text-muted-foreground">Final Customer Price</label>
               <input
                 type="text"
                 value={formatMoney(formData.purchasePriceInclusive, currencyCode, currencyPrecision, currencyPlacement, false)}
@@ -1669,7 +1773,7 @@ export default function CreateProduct() {
             </div>
 
             <div>
-              <FieldLabel>Profit Margin (%)</FieldLabel>
+              <FieldLabel>Profit Percentage (%)</FieldLabel>
               <div className="relative mt-2">
                 <TrendingUp className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -1683,10 +1787,21 @@ export default function CreateProduct() {
                   className={`${baseFieldWithIconClass}`}
                 />
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">Markup % = Profit ÷ Cost Price × 100</p>
             </div>
 
             <div>
-              <FieldLabel>Default Selling Price</FieldLabel>
+              <label className="text-sm font-medium text-muted-foreground">Profit Amount</label>
+              <input
+                type="text"
+                value={formatMoney(formData.purchasePriceExclusive - formData.defaultPurchasePrice, currencyCode, currencyPrecision, currencyPlacement, false)}
+                disabled
+                className="mt-2 w-full rounded-lg border border-border bg-surface-alt px-4 py-2.5 text-sm text-foreground opacity-70 outline-none"
+              />
+            </div>
+
+            <div>
+              <FieldLabel>Selling Price (Editable)</FieldLabel>
               <MoneyInput
                 value={sellingPriceInput}
                 onChange={handleSellingPriceChange}
@@ -1696,10 +1811,9 @@ export default function CreateProduct() {
                 currencyPlacement={currencyPlacement}
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                How much will you be selling the product for.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                You can adjust this manually without changing the profit percentage.
+                {formData.taxType === 'inclusive'
+                  ? 'This is the final amount the customer will pay, including tax.'
+                  : 'This amount excludes tax and can be overridden whenever needed.'}
               </p>
             </div>
           </div>
