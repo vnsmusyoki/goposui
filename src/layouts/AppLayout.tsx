@@ -586,7 +586,6 @@ const AppLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
-
     </div>
   );
 };
