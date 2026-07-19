@@ -92,7 +92,7 @@ function App() {
           <Route path="/inventory/sub-categories/:id/edit" element={<EditSubCategory />} />
 
           {/* UNITS */}
-          <Route path="/products/units" element={<ProductUnits />} /> 
+          <Route path="/products/units" element={<ProductUnits />} />
 
           {/* BRANDS */}
           <Route path="/products/brands" element={<BrandsList />} />
@@ -142,23 +142,28 @@ function App() {
 
 
           {/* SALES */}
-           <Route path="/sales/order" element={<SalesOrders />} />
-           <Route path="/sales/order/create" element={<CreateSaleOrder />} />
-           <Route path="/sales/order/:id/view" element={<SaleOrderDetails />} />
-           <Route path="/sales/order/:id/edit" element={<EditSaleOrder />} />
-           <Route path="/sales/order/:id/loading-sheet" element={<SaleOrderLoadingSheet />} />
-           <Route path="/sales/list" element={<SalesList />} />
-           <Route path="/sales/list/:id/view" element={<SalesDetails />} />
-           <Route path="/sales/pos" element={<Pos />} />
+          <Route path="/sales/order" element={<SalesOrders />} />
+          <Route path="/sales/order/create" element={<CreateSaleOrder />} />
+          <Route path="/sales/order/:id/view" element={<SaleOrderDetails />} />
+          <Route path="/sales/order/:id/edit" element={<EditSaleOrder />} />
+          <Route path="/sales/order/:id/loading-sheet" element={<SaleOrderLoadingSheet />} />
+          <Route path="/sales/list" element={<SalesList />} />
+          <Route path="/sales/list/:id/view" element={<SalesDetails />} />
+
+
         </Route>
+        <Route element={<PosLayout />}>
+          <Route path="/sales/pos" element={<Pos />} />
+        </Route>
+
       </Route>
 
-      <Route element={<ProtectedRoute requiredRoles="Admin"/>} >
+      <Route element={<ProtectedRoute requiredRoles="Admin" />} >
         <Route element={<AppLayout />} >
-            <Route path="/admin/modules-management" element={<AdminModuleList />} />
-            <Route path="/business-management/list" element={<AdminBusinessesList />} />
-            <Route path="/business-management/details/:id" element={<AdminBusinessDetails />} />
-          </Route>
+          <Route path="/admin/modules-management" element={<AdminModuleList />} />
+          <Route path="/business-management/list" element={<AdminBusinessesList />} />
+          <Route path="/business-management/details/:id" element={<AdminBusinessDetails />} />
+        </Route>
       </Route>
 
       <Route element={<ProtectedRoute />}>
