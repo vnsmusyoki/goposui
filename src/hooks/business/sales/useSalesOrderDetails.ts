@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { ApiError, apiRequest } from '@/lib/api';
+import { useCallback, useState } from "react";
+import { ApiError, apiRequest } from "@/lib/api";
 
 export type SalesOrderDetailActivity = {
   id: string;
@@ -170,31 +170,43 @@ function normalizeNumber(value: unknown) {
 }
 
 export function useSalesOrderDetails() {
-  const [salesOrder, setSalesOrder] = useState<SalesOrderDetailResponse | null>(null);
+  const [salesOrder, setSalesOrder] = useState<SalesOrderDetailResponse | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSalesOrder = useCallback(async (id: string) => {
     const salesOrderId = id.trim();
     if (!salesOrderId) {
-      throw new ApiError('Sales order ID is required.', 400, { message: 'Sales order ID is required.' });
+      throw new ApiError("Sales order ID is required.", 400, {
+        message: "Sales order ID is required.",
+      });
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      const response = await apiRequest<SalesOrderDetailApiResponse>(`/sales/orders/${salesOrderId}`);
+      const response = await apiRequest<SalesOrderDetailApiResponse>(
+        `/sales/orders/${salesOrderId}`,
+      );
       const normalized: SalesOrderDetailResponse = {
         saleOrder: {
           ...response.salesOrder.saleOrder,
           subtotal: normalizeNumber(response.salesOrder.saleOrder.subtotal),
-          totalDiscount: normalizeNumber(response.salesOrder.saleOrder.totalDiscount),
+          totalDiscount: normalizeNumber(
+            response.salesOrder.saleOrder.totalDiscount,
+          ),
           totalTax: normalizeNumber(response.salesOrder.saleOrder.totalTax),
           grandTotal: normalizeNumber(response.salesOrder.saleOrder.grandTotal),
           itemsCount: normalizeNumber(response.salesOrder.saleOrder.itemsCount),
-          totalQuantity: normalizeNumber(response.salesOrder.saleOrder.totalQuantity),
-          reserveOrderItems: Boolean(response.salesOrder.saleOrder.reserveOrderItems),
+          totalQuantity: normalizeNumber(
+            response.salesOrder.saleOrder.totalQuantity,
+          ),
+          reserveOrderItems: Boolean(
+            response.salesOrder.saleOrder.reserveOrderItems,
+          ),
           paidAmount: normalizeNumber(response.salesOrder.saleOrder.paidAmount),
           balanceDue: normalizeNumber(response.salesOrder.saleOrder.balanceDue),
         },
@@ -218,7 +230,12 @@ export function useSalesOrderDetails() {
       setSalesOrder(normalized);
       return normalized;
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Unable to load sales order.';
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Unable to load sales order.";
       setError(message);
       throw err;
     } finally {

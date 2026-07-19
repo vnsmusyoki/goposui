@@ -1,51 +1,7 @@
 import { useCallback, useState } from "react";
-import { ApiError, apiRequest } from "@/lib/api";
+import { apiRequest } from "@/lib/api";
 
-export type SaleOrderStatus =
-  | "draft"
-  | "pending_approval"
-  | "approved"
-  | "processing"
-  | "ready_for_shipment"
-  | "completed";
-
-export type CreateSaleOrderItemInput = {
-  product_id: string;
-  quantity: number;
-  unit_cost: number;
-  discount_percentage: number;
-  discount_amount: number;
-  tax_rate: number;
-  tax_amount: number;
-  unit_price: number;
-  line_total: number;
-  batch_tracking_enabled: boolean;
-  sort_order: number;
-};
-
-export type CreateSaleOrderInput = {
-  customer_id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email: string;
-  reference_number: string;
-  sale_date: string;
-  location_id: string;
-  notes: string;
-  status: SaleOrderStatus;
-  subtotal: number;
-  total_discount: number;
-  total_tax: number;
-  grand_total: number;
-  reserve_order_items: boolean;
-  items_count: number;
-  total_quantity: number;
-  items: CreateSaleOrderItemInput[];
-};
-
-export type UpdateSaleOrderInput = CreateSaleOrderInput;
-
-export type SalesOrderListItem = {
+export type SaleListItem = {
   id: string;
   businessId: string;
   locationId: string;
@@ -55,7 +11,7 @@ export type SalesOrderListItem = {
   saleDate: string;
   customerName: string;
   customerPhone: string;
-  status: SaleOrderStatus;
+  status: string;
   shippingStatus: string;
   itemsCount: number;
   grandTotal: number;
@@ -67,53 +23,49 @@ export type SalesOrderListItem = {
   updatedAt: string;
 };
 
-type SaleOrderResponse = {
+export type SaleOrderStatus = string;
+export type SalesOrderListItem = SaleListItem;
+
+type SalesResponse = {
+  salesOrders: SaleListItem[];
+  message?: string;
+};
+
+type SaleActionResponse = {
   sale?: {
     id: string;
     referenceNumber: string;
-    status: SaleOrderStatus;
+    status: string;
   };
   message?: string;
 };
 
-type DeleteSaleOrderResponse = {
-  message?: string;
-};
-
-type SalesOrdersResponse = {
-  salesOrders: SalesOrderListItem[];
-  message?: string;
-};
-
-type UpdateSalesOrderStatusInput = {
-  status: SaleOrderStatus;
-  reserve_order_items: boolean;
-};
-
-type SaleOrdersStore = {
-  salesOrders: SalesOrderListItem[];
+type SaleStore = {
+  salesOrders: SaleListItem[];
   loading: boolean;
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
   loadSalesOrders: (
     filters?: Record<string, string | undefined>,
-  ) => Promise<SalesOrderListItem[]>;
-  createSaleOrder: (data: CreateSaleOrderInput) => Promise<SaleOrderResponse>;
+  ) => Promise<SaleListItem[]>;
+  createSaleOrder: (
+    data: Record<string, unknown>,
+  ) => Promise<SaleActionResponse>;
   updateSaleOrder: (
     id: string,
-    data: UpdateSaleOrderInput,
-  ) => Promise<SaleOrderResponse>;
+    data: Record<string, unknown>,
+  ) => Promise<SaleActionResponse>;
   updateSaleOrderStatus: (
     id: string,
-    data: UpdateSalesOrderStatusInput,
-  ) => Promise<SaleOrderResponse>;
-  deleteSaleOrder: (id: string) => Promise<DeleteSaleOrderResponse>;
+    data: Record<string, unknown>,
+  ) => Promise<SaleActionResponse>;
+  deleteSaleOrder: (id: string) => Promise<{ message?: string }>;
   clearError: () => void;
 };
 
-export function useSalesOrders() {
-  const [salesOrders, setSalesOrders] = useState<SalesOrderListItem[]>([]);
+export function useSales() {
+  const [salesOrders, setSalesOrders] = useState<SaleListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -133,15 +85,15 @@ export function useSalesOrders() {
             params.set(key, value.trim());
           }
         });
-        const response = await apiRequest<SalesOrdersResponse>(
-          `/sales/orders${params.toString() ? `?${params.toString()}` : ""}`,
+        const response = await apiRequest<SalesResponse>(
+          `/sales${params.toString() ? `?${params.toString()}` : ""}`,
         );
         const nextOrders = response.salesOrders ?? [];
         setSalesOrders(nextOrders);
         return nextOrders;
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Unable to load sales orders.";
+          err instanceof Error ? err.message : "Unable to load sales.";
         setError(message);
         return [];
       } finally {
@@ -151,18 +103,18 @@ export function useSalesOrders() {
     [],
   );
 
-  const createSaleOrder = useCallback(async (data: CreateSaleOrderInput) => {
+  const createSaleOrder = useCallback(async (data: Record<string, unknown>) => {
     setLoading(true);
     setError(null);
 
     try {
-      return await apiRequest<SaleOrderResponse>("/sales/orders", {
+      return await apiRequest<SaleActionResponse>("/sales/orders", {
         method: "POST",
         body: JSON.stringify(data),
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to create sale order.";
+        err instanceof Error ? err.message : "Unable to create sale.";
       setError(message);
       throw err;
     } finally {
@@ -171,18 +123,18 @@ export function useSalesOrders() {
   }, []);
 
   const updateSaleOrder = useCallback(
-    async (id: string, data: UpdateSaleOrderInput) => {
+    async (id: string, data: Record<string, unknown>) => {
       setLoading(true);
       setError(null);
 
       try {
-        return await apiRequest<SaleOrderResponse>(`/sales/orders/${id}`, {
+        return await apiRequest<SaleActionResponse>(`/sales/orders/${id}`, {
           method: "PATCH",
           body: JSON.stringify(data),
         });
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Unable to update sale order.";
+          err instanceof Error ? err.message : "Unable to update sale.";
         setError(message);
         throw err;
       } finally {
@@ -193,12 +145,12 @@ export function useSalesOrders() {
   );
 
   const updateSaleOrderStatus = useCallback(
-    async (id: string, data: UpdateSalesOrderStatusInput) => {
+    async (id: string, data: Record<string, unknown>) => {
       setIsSaving(true);
       setError(null);
 
       try {
-        return await apiRequest<SaleOrderResponse>(
+        return await apiRequest<SaleActionResponse>(
           `/sales/orders/${id}/status`,
           {
             method: "PATCH",
@@ -207,9 +159,7 @@ export function useSalesOrders() {
         );
       } catch (err) {
         const message =
-          err instanceof Error
-            ? err.message
-            : "Unable to update sale order status.";
+          err instanceof Error ? err.message : "Unable to update sale status.";
         setError(message);
         throw err;
       } finally {
@@ -224,12 +174,12 @@ export function useSalesOrders() {
     setError(null);
 
     try {
-      return await apiRequest<DeleteSaleOrderResponse>(`/sales/orders/${id}`, {
+      return await apiRequest<{ message?: string }>(`/sales/orders/${id}`, {
         method: "DELETE",
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Unable to delete sale order.";
+        err instanceof Error ? err.message : "Unable to delete sale.";
       setError(message);
       throw err;
     } finally {
@@ -249,5 +199,7 @@ export function useSalesOrders() {
     updateSaleOrderStatus,
     deleteSaleOrder,
     clearError,
-  };
+  } satisfies SaleStore;
 }
+
+export { useSales as useSalesOrders };

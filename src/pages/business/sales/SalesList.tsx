@@ -66,10 +66,10 @@ import {
   type SalesOrderStatusDefinition,
 } from "@/hooks/business/sales/useSalesOrderStatuses";
 import {
-  useSalesOrders,
+  useSales,
   type SaleOrderStatus,
-  type SalesOrderListItem,
-} from "@/hooks/business/sales/useSalesOrders";
+  type SaleListItem,
+} from "@/hooks/business/sales/useSales";
 
 type FilterState = {
   locationId: string;
@@ -84,11 +84,11 @@ type FilterState = {
 };
 
 type StatusModalState = {
-  order: SalesOrderListItem;
+  order: SaleListItem;
 } | null;
 
 type DeleteModalState = {
-  order: SalesOrderListItem;
+  order: SaleListItem;
 } | null;
 
 type ActionMenuState = {
@@ -98,12 +98,16 @@ type ActionMenuState = {
 } | null;
 
 type RowAction =
-  | "update-status"
-  | "prepare-loading-sheet"
+  | "view"
   | "edit"
-  | "show"
   | "delete"
-  | "shipping-documents";
+  | "edit-shipping"
+  | "print-invoice"
+  | "package-slip"
+  | "view-payments"
+  | "sell-return"
+  | "invoice-url"
+  | "new-sale-notification";
 
 const SALE_STATUS_OPTIONS: Array<{ value: SaleOrderStatus; label: string }> = [
   { value: "draft", label: "Draft" },
@@ -343,7 +347,7 @@ function StatusModal({
   onSave,
   saving,
 }: {
-  order: SalesOrderListItem;
+  order: SaleListItem;
   status: SaleOrderStatus;
   reserveOrderItems: boolean;
   currentStatusDefinition?: SalesOrderStatusDefinition | null;
@@ -358,7 +362,7 @@ function StatusModal({
   const isCompleted = currentStatusDefinition?.code === "completed";
   const helperText =
     selectedDefinition?.whatHappens ||
-    "Choose a later status to continue the sale order workflow.";
+    "Choose a later status to continue the sale workflow.";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
@@ -366,7 +370,7 @@ function StatusModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-muted-foreground">
-              Update sale order status
+              Update sale status
             </p>
             <h3 className="mt-1 text-xl font-semibold text-foreground">
               {order.referenceNumber || order.id}
@@ -461,7 +465,7 @@ function StatusModal({
   );
 }
 
-export default function SalesOrders() {
+export default function SalesList() {
   const navigate = useNavigate();
   const { locations } = useBusinessLocations();
   const { customers } = useBusinessCustomers();
@@ -477,7 +481,7 @@ export default function SalesOrders() {
     updateSaleOrderStatus,
     deleteSaleOrder,
     clearError,
-  } = useSalesOrders();
+  } = useSales();
   const [activeTab, setActiveTab] = useState<"analytics" | "list">("analytics");
   const [actionMenuOpenFor, setActionMenuOpenFor] = useState<string | null>(
     null,
@@ -724,9 +728,9 @@ export default function SalesOrders() {
 
   const filteredOrders = salesOrders;
 
-  const openStatusModal = (order: SalesOrderListItem) => {
+  const openStatusModal = (order: SaleListItem) => {
     if (order.status === "completed") {
-      toast("Completed orders cannot be changed.");
+      toast("Completed sales cannot be changed.");
       return;
     }
     setStatusModal({ order });
@@ -743,10 +747,7 @@ export default function SalesOrders() {
     );
   };
 
-  const openActionMenu = (
-    order: SalesOrderListItem,
-    button: HTMLButtonElement,
-  ) => {
+  const openActionMenu = (order: SaleListItem, button: HTMLButtonElement) => {
     const rect = button.getBoundingClientRect();
     const menuHeight = 320;
     const menuWidth = 240;
@@ -773,21 +774,12 @@ export default function SalesOrders() {
     setActionMenuPosition(null);
   };
 
-  const handleOrderAction = async (
-    action: RowAction,
-    order: SalesOrderListItem,
-  ) => {
+  const handleOrderAction = async (action: RowAction, order: SaleListItem) => {
     closeActionMenu();
 
     switch (action) {
-      case "update-status":
-        openStatusModal(order);
-        return;
-      case "prepare-loading-sheet":
-        navigate(`/sales/order/${order.id}/loading-sheet`);
-        return;
-      case "show":
-        navigate(`/sales/order/${order.id}/view`);
+      case "view":
+        navigate(`/sales/list/${order.id}/view`);
         return;
       case "edit":
         navigate(`/sales/order/${order.id}/edit`);
@@ -796,8 +788,36 @@ export default function SalesOrders() {
         setDeleteModalError("");
         setDeleteModal({ order });
         return;
-      case "shipping-documents":
-        toast("Shipping documents are not available yet.");
+      case "edit-shipping":
+        navigate(`/sales/order/${order.id}/loading-sheet`);
+        return;
+      case "print-invoice":
+        window.open(
+          `/sales/order/${order.id}/view`,
+          "_blank",
+          "noopener,noreferrer",
+        );
+        return;
+      case "package-slip":
+        navigate(`/sales/order/${order.id}/loading-sheet`);
+        return;
+      case "view-payments":
+        toast("View payments is not available yet.");
+        return;
+      case "sell-return":
+        toast("Sell return is not available yet.");
+        return;
+      case "invoice-url":
+        try {
+          const invoiceUrl = `${window.location.origin}/sales/order/${order.id}/view`;
+          await navigator.clipboard.writeText(invoiceUrl);
+          toast.success("Invoice URL copied to clipboard.");
+        } catch {
+          toast.error("Unable to copy the invoice URL.");
+        }
+        return;
+      case "new-sale-notification":
+        toast("New sale notification is not available yet.");
         return;
       default:
         return;
@@ -811,7 +831,7 @@ export default function SalesOrders() {
         status: nextStatus,
         reserve_order_items: reserveOrderItems,
       });
-      toast.success("Sales order status updated.");
+      toast.success("Sale status updated.");
       setStatusModal(null);
       await loadSalesOrders({
         location_id:
@@ -827,9 +847,7 @@ export default function SalesOrders() {
       });
     } catch (err) {
       const message =
-        err instanceof Error
-          ? err.message
-          : "Unable to update sales order status.";
+        err instanceof Error ? err.message : "Unable to update sale status.";
       toast.error(message);
     }
   };
@@ -842,8 +860,7 @@ export default function SalesOrders() {
       deleteModal.order.status !== "ready_for_shipment" &&
       deleteModal.order.status !== "completed";
     if (!canDelete) {
-      const message =
-        "This sales order is already finalized and cannot be deleted.";
+      const message = "This sale is already finalized and cannot be deleted.";
       setDeleteModalError(message);
       toast.error(message);
       return;
@@ -854,7 +871,7 @@ export default function SalesOrders() {
 
     try {
       const response = await deleteSaleOrder(deleteModal.order.id);
-      toast.success(response.message || "Sales order deleted successfully.");
+      toast.success(response.message || "Sale deleted successfully.");
       setDeleteModal(null);
       await loadSalesOrders({
         location_id:
@@ -870,7 +887,7 @@ export default function SalesOrders() {
       });
     } catch (err) {
       const message =
-        err instanceof ApiError ? err.message : "Unable to delete sales order.";
+        err instanceof ApiError ? err.message : "Unable to delete sale.";
       setDeleteModalError(message);
       toast.error(message);
     } finally {
@@ -913,17 +930,15 @@ export default function SalesOrders() {
             </button>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-bold text-foreground">
-                  Sales Orders
-                </h1>
+                <h1 className="text-2xl font-bold text-foreground">Sales</h1>
                 <Badge
-                  label={`${stats.totalOrders} orders`}
+                  label={`${stats.totalOrders} sales`}
                   tone="bg-slate-100 text-slate-700 border-slate-300"
                 />
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
-                Track customer orders, reserve stock, and finalize sales when
-                the order reaches shipment or completion.
+                Track customer sales, reserve stock, and finalize records when
+                the sale reaches shipment or completion.
               </p>
             </div>
           </div>
@@ -935,7 +950,7 @@ export default function SalesOrders() {
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <Plus className="h-4 w-4" />
-              New Order
+              New Sale
             </button>
             <button
               type="button"
@@ -1009,7 +1024,7 @@ export default function SalesOrders() {
             accent="amber"
           />
           <StatCard
-            title="Loaded Orders"
+            title="Loaded Sales"
             value={String(stats.totalOrders)}
             icon={Users}
             accent="purple"
@@ -1052,7 +1067,7 @@ export default function SalesOrders() {
                     <input
                       value={searchInput}
                       onChange={(event) => setSearchInput(event.target.value)}
-                      placeholder="Search by order no, customer, phone or location"
+                      placeholder="Search by sale no, customer, phone or location"
                       className="w-full rounded-xl border border-border bg-background py-3 pl-9 pr-4 text-sm outline-none focus:border-primary"
                     />
                   </div>
@@ -1114,7 +1129,7 @@ export default function SalesOrders() {
 
                 <label className="space-y-1.5">
                   <span className="text-xs font-medium text-muted-foreground">
-                    Order Status
+                    Sale Status
                   </span>
                   <div className="relative">
                     <Clock3 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1195,7 +1210,7 @@ export default function SalesOrders() {
                   <span className="font-medium text-foreground">
                     {filteredOrders.length}
                   </span>{" "}
-                  orders in the current filter set
+                  sales in the current filter set
                 </p>
               </div>
             </div>
@@ -1226,7 +1241,7 @@ export default function SalesOrders() {
               }`}
             >
               <Activity className="h-4 w-4" />
-              All Orders
+              All Sales
               <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
                 {stats.totalOrders}
               </span>
@@ -1235,7 +1250,7 @@ export default function SalesOrders() {
           <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
             <span className="inline-flex items-center gap-1">
               <TrendingUp className="h-3.5 w-3.5" />
-              {stats.totalOrders} filtered orders
+              {stats.totalOrders} filtered sales
             </span>
           </div>
         </div>
@@ -1244,13 +1259,13 @@ export default function SalesOrders() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <StatCard
-                title="Average Order Value"
+                title="Average Sale Value"
                 value={formatMoney(analytics.averageOrderValue)}
                 icon={TrendingUp}
                 accent="primary"
               />
               <StatCard
-                title="Order Count"
+                title="Sale Count"
                 value={String(analytics.totalOrders)}
                 icon={BarChart3}
                 accent="blue"
@@ -1271,8 +1286,8 @@ export default function SalesOrders() {
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
               <ChartCard
-                title="Orders by Month"
-                description="Monthly order volume across the current filters."
+                title="Sales by Month"
+                description="Monthly sales volume across the current filters."
                 icon={BarChart3}
               >
                 <ResponsiveContainer width="100%" height="100%">
@@ -1296,7 +1311,7 @@ export default function SalesOrders() {
                       axisLine={false}
                       fontSize={12}
                     />
-                    <Tooltip formatter={(value) => [value, "Orders"]} />
+                    <Tooltip formatter={(value) => [value, "Sales"]} />
                     <Line
                       type="monotone"
                       dataKey="count"
@@ -1372,8 +1387,8 @@ export default function SalesOrders() {
               </ChartCard>
 
               <ChartCard
-                title="Order Status Mix"
-                description="Breakdown of order statuses in the current result set."
+                title="Sale Status Mix"
+                description="Breakdown of sale statuses in the current result set."
                 icon={PieChartIcon}
               >
                 <ResponsiveContainer width="100%" height="100%">
@@ -1403,7 +1418,7 @@ export default function SalesOrders() {
 
               <ChartCard
                 title="Shipping Status Mix"
-                description="How far each order has progressed through shipping."
+                description="How far each sale has progressed through shipping."
                 icon={Truck}
               >
                 <ResponsiveContainer width="100%" height="100%">
@@ -1435,7 +1450,7 @@ export default function SalesOrders() {
 
               <ChartCard
                 title="Revenue by Location"
-                description="Top locations ranked by order value."
+                description="Top locations ranked by sale value."
                 icon={Building2}
               >
                 <ResponsiveContainer width="100%" height="100%">
@@ -1527,13 +1542,11 @@ export default function SalesOrders() {
             <div className="border-b border-border px-5 py-4">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">
-                  Sales Orders
-                </h2>
+                <h2 className="text-sm font-semibold text-foreground">Sales</h2>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Ready for shipment and completed orders will convert into
-                finalized sales and affect inventory batches.
+                Ready for shipment and completed sales will convert into
+                finalized records and affect inventory batches.
               </p>
             </div>
 
@@ -1544,9 +1557,9 @@ export default function SalesOrders() {
                     <th className="min-w-[170px] px-5 py-4">Date</th>
                     <th className="min-w-[280px] px-5 py-4">Customer Name</th>
                     <th className="px-5 py-4">Contact Number</th>
-                    <th className="px-5 py-4">Order No</th>
+                    <th className="px-5 py-4">Sale No</th>
                     <th className="px-5 py-4">Location</th>
-                    <th className="min-w-[170px] px-5 py-4">Order Status</th>
+                    <th className="min-w-[170px] px-5 py-4">Sale Status</th>
                     <th className="px-5 py-4">Shipping Status</th>
                     <th className="px-5 py-4 text-right">Total Items</th>
                     <th className="px-5 py-4 text-right">Grand Total</th>
@@ -1564,7 +1577,7 @@ export default function SalesOrders() {
                       >
                         <div className="inline-flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading sales orders...
+                          Loading sales...
                         </div>
                       </td>
                     </tr>
@@ -1574,7 +1587,7 @@ export default function SalesOrders() {
                         colSpan={12}
                         className="px-5 py-16 text-center text-sm text-muted-foreground"
                       >
-                        No sales orders match the current filters.
+                        No sales records match the current filters.
                       </td>
                     </tr>
                   ) : (
@@ -1633,7 +1646,7 @@ export default function SalesOrders() {
                                 openActionMenu(order, event.currentTarget);
                               }}
                               className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-surface-alt hover:text-foreground"
-                              aria-label="Open order actions"
+                              aria-label="Open sale actions"
                             >
                               <MoreVertical className="h-4 w-4" />
                             </button>
@@ -1655,35 +1668,15 @@ export default function SalesOrders() {
                                         Actions for
                                       </p>
                                       <p className="truncate text-sm font-medium text-foreground">
-                                        {order.referenceNumber || "this order"}
+                                        {order.referenceNumber || "this sale"}
                                       </p>
                                     </div>
                                     <div className="divide-y divide-border p-1">
                                       <ActionMenuItem
-                                        icon={BadgeCheck}
-                                        label="Update Status"
-                                        onClick={() =>
-                                          void handleOrderAction(
-                                            "update-status",
-                                            order,
-                                          )
-                                        }
-                                      />
-                                      <ActionMenuItem
-                                        icon={FileText}
-                                        label="Prepare Loading Sheet"
-                                        onClick={() =>
-                                          void handleOrderAction(
-                                            "prepare-loading-sheet",
-                                            order,
-                                          )
-                                        }
-                                      />
-                                      <ActionMenuItem
                                         icon={Eye}
-                                        label="Show"
+                                        label="View"
                                         onClick={() =>
-                                          void handleOrderAction("show", order)
+                                          void handleOrderAction("view", order)
                                         }
                                       />
                                       <ActionMenuItem
@@ -1706,10 +1699,70 @@ export default function SalesOrders() {
                                       />
                                       <ActionMenuItem
                                         icon={FileText}
-                                        label="Shipping documents"
+                                        label="Edit Shipping"
                                         onClick={() =>
                                           void handleOrderAction(
-                                            "shipping-documents",
+                                            "edit-shipping",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={FileText}
+                                        label="Print Invoice"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "print-invoice",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={FileText}
+                                        label="Package Slip"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "package-slip",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={Eye}
+                                        label="View Payments"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "view-payments",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={BadgeCheck}
+                                        label="Sell Return"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "sell-return",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={Columns3}
+                                        label="Invoice URL"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "invoice-url",
+                                            order,
+                                          )
+                                        }
+                                      />
+                                      <ActionMenuItem
+                                        icon={RefreshCw}
+                                        label="New Sale Notification"
+                                        onClick={() =>
+                                          void handleOrderAction(
+                                            "new-sale-notification",
                                             order,
                                           )
                                         }
@@ -1733,7 +1786,7 @@ export default function SalesOrders() {
 
       {saleOrderStatusesLoading ? (
         <div className="mx-auto w-full max-w-7xl px-5 pt-2 text-sm text-muted-foreground">
-          Loading sales order statuses...
+          Loading sale statuses...
         </div>
       ) : null}
 
@@ -1771,7 +1824,7 @@ function DeleteModal({
   onDelete,
   deleting,
 }: {
-  order: SalesOrderListItem;
+  order: SaleListItem;
   onClose: () => void;
   onDelete: () => void;
   deleting: boolean;
@@ -1781,8 +1834,8 @@ function DeleteModal({
     order.status !== "ready_for_shipment" &&
     order.status !== "completed";
   const warningText = canDelete
-    ? "This will remove the sales order, its line items, and any reserved stock allocations."
-    : "This order is already finalized, so it cannot be deleted.";
+    ? "This will remove the sale, its line items, and any reserved stock allocations."
+    : "This sale is already finalized, so it cannot be deleted.";
 
   return (
     <div
@@ -1796,7 +1849,7 @@ function DeleteModal({
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-destructive">
-              Delete sales order
+              Delete sale
             </p>
             <h3 className="mt-1 text-lg font-semibold text-foreground">
               {order.referenceNumber || order.id}
@@ -1831,8 +1884,8 @@ function DeleteModal({
 
           {!canDelete ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Finalized sales orders cannot be deleted because they are already
-              part of the inventory and accounting history.
+              Finalized sales cannot be deleted because they are already part of
+              the inventory and accounting history.
             </div>
           ) : null}
         </div>
@@ -1852,7 +1905,7 @@ function DeleteModal({
             className="inline-flex items-center gap-2 rounded-xl bg-destructive px-4 py-2.5 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Delete Order
+            Delete Sale
           </button>
         </div>
       </div>

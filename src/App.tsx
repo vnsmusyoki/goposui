@@ -52,6 +52,10 @@ import SalesOrders from './pages/business/sales/SalesOrders'
 import CreateSaleOrder from './pages/business/sales/CreateSaleOrder'
 import SaleOrderDetails from './pages/business/sales/SaleOrderDetails'
 import EditSaleOrder from './pages/business/sales/EditSaleOrder'
+import SaleOrderLoadingSheet from './pages/business/sales/SaleOrderLoadingSheet'
+import SalesList from './pages/business/sales/SalesList'
+import SalesDetails from './pages/business/sales/SalesDetails'
+import Pos from './pages/business/pos/Pos'
 
 function App() {
   return (
@@ -137,11 +141,15 @@ function App() {
 
 
 
-          {/* SELLS */}
+          {/* SALES */}
            <Route path="/sales/order" element={<SalesOrders />} />
            <Route path="/sales/order/create" element={<CreateSaleOrder />} />
            <Route path="/sales/order/:id/view" element={<SaleOrderDetails />} />
            <Route path="/sales/order/:id/edit" element={<EditSaleOrder />} />
+           <Route path="/sales/order/:id/loading-sheet" element={<SaleOrderLoadingSheet />} />
+           <Route path="/sales/list" element={<SalesList />} />
+           <Route path="/sales/list/:id/view" element={<SalesDetails />} />
+           <Route path="/sales/pos" element={<Pos />} />
         </Route>
       </Route>
 
