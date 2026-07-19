@@ -50,6 +50,20 @@ export type ProductListItem = {
   createdAt: string;
   updatedAt: string;
   status: 'active' | 'inactive' | 'draft';
+  productPrices?: ProductPriceItem[];
+};
+
+export type ProductPriceItem = {
+  id: string;
+  priceType: 'retail' | 'wholesale' | 'tier' | 'location' | 'promotion' | 'customer_group';
+  minQuantity: number;
+  price: number;
+  locationId: string;
+  customerGroup: string;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  priority: number;
 };
 
 export type ProductImageItem = {
@@ -222,6 +236,19 @@ export type CreateProductPayload = {
   images: ProductImagePayload[];
   combo_items: ProductComboItemPayload[];
   variants: ProductVariantPayload[];
+  product_prices?: ProductPricePayload[];
+};
+
+export type ProductPricePayload = {
+  price_type: 'retail' | 'wholesale' | 'tier' | 'location' | 'promotion' | 'customer_group';
+  min_quantity: number;
+  price: number;
+  location_id?: string | null;
+  customer_group?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  active: boolean;
+  priority: number;
 };
 
 export type CreateProductResponse = {

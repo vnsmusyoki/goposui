@@ -6,7 +6,6 @@ import LandingPage from './pages/LandingPage'
 import FogotPassword from './pages/auth/fogotpassword'
 import Login from './pages/auth/login'
 import Register from './pages/auth/register'
-import PosLayout from './layouts/PosLayout'
 import { GuestOnlyRoute, ProtectedRoute } from './auth/RequireAuth'
 import Dashboard from './pages/Dashboard'
 import BusinessDashboard from './pages/business/BusinessDashboard'
@@ -152,9 +151,7 @@ function App() {
 
 
         </Route>
-        <Route element={<PosLayout />}>
-          <Route path="/sales/pos" element={<Pos />} />
-        </Route>
+        <Route path="/sales/pos" element={<Pos />} />
 
       </Route>
 
@@ -167,9 +164,9 @@ function App() {
       </Route>
 
       <Route element={<ProtectedRoute />}>
-        <Route path="/pos" element={<PosLayout />}>
+        <Route path="/pos">
           <Route index element={<Navigate to="pos" replace />} />
-          <Route path="pos" element={<PosLayout />} />
+          <Route path="pos" element={<Pos />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

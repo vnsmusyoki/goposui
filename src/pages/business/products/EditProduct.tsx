@@ -58,6 +58,7 @@ import { formatProductSkuDisplay } from '@/lib/productSku';
 
 type ProductType = 'single' | 'combo' | 'variable';
 type TaxType = 'inclusive' | 'exclusive' | 'none';
+type ProductPriceType = 'wholesale' | 'tier' | 'location' | 'promotion' | 'customer_group';
 
 type SelectOption<T extends string = string> = {
   value: T;
@@ -104,6 +105,19 @@ type Variant = {
   supplierCode?: string;
 };
 
+type ProductPriceRule = {
+  id: string;
+  priceType: ProductPriceType;
+  minQuantity: number;
+  price: number;
+  locationId: string;
+  customerGroup: string;
+  startsAt: string;
+  endsAt: string;
+  active: boolean;
+  priority: number;
+};
+
 type FormState = {
   name: string;
   sku: string;
@@ -133,6 +147,7 @@ type FormState = {
   purchasePriceInclusive: number;
   profitMargin: number;
   defaultSellingPrice: number;
+  productPrices: ProductPriceRule[];
   images: ProductImage[];
   brochure: File | null;
   brochureName: string;
@@ -169,6 +184,20 @@ const INITIAL_FORM_STATE: FormState = {
   purchasePriceInclusive: 0,
   profitMargin: 0,
   defaultSellingPrice: 0,
+  productPrices: [
+    {
+      id: 'wholesale-default',
+      priceType: 'wholesale',
+      minQuantity: 1,
+      price: 0,
+      locationId: '',
+      customerGroup: '',
+      startsAt: '',
+      endsAt: '',
+      active: true,
+      priority: 90,
+    },
+  ],
   images: [],
   brochure: null,
   brochureName: '',
@@ -310,6 +339,14 @@ const baseTextareaClass =
 const baseSelectClass =
   'mt-2 w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm text-foreground appearance-none outline-none focus:ring-1 focus:ring-primary';
 
+const productPriceTypeOptions: Array<{ value: ProductPriceType; label: string }> = [
+  { value: 'wholesale', label: 'Wholesale' },
+  { value: 'tier', label: 'Tiered quantity' },
+  { value: 'location', label: 'Location price' },
+  { value: 'promotion', label: 'Promotion' },
+  { value: 'customer_group', label: 'Customer group' },
+];
+
 function normalizeMoneyInput(rawValue: string) {
   const cleaned = rawValue.replace(/[^0-9.]/g, '');
   if (!cleaned) return '';
@@ -324,6 +361,15 @@ function normalizeMoneyInput(rawValue: string) {
 function moneyInputToNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 16);
+  }
+  return parsed.toISOString().slice(0, 16);
 }
 
 function getCurrencySymbol(currencyCode?: string) {
@@ -651,6 +697,20 @@ export default function EditProduct() {
       purchasePriceInclusive: product.purchasePriceInclusive ?? 0,
       profitMargin: product.profitMargin ?? 0,
       defaultSellingPrice: product.defaultSellingPrice ?? 0,
+      productPrices: (product.productPrices ?? [])
+        .filter((price) => price.priceType !== 'retail')
+        .map((price) => ({
+          id: price.id,
+          priceType: price.priceType as ProductPriceType,
+          minQuantity: price.minQuantity || 1,
+          price: price.price || 0,
+          locationId: price.locationId || '',
+          customerGroup: price.customerGroup || '',
+          startsAt: toDateTimeLocalValue(price.startsAt),
+          endsAt: toDateTimeLocalValue(price.endsAt),
+          active: price.active,
+          priority: price.priority || 100,
+        })),
       images: (product.images ?? []).map((image) => ({
         id: image.id,
         name: image.name,
@@ -1090,6 +1150,45 @@ export default function EditProduct() {
   };
   const removeVariant = (id: string) => setVariants((prev) => prev.filter((v) => v.id !== id));
 
+  const handleAddPriceRule = () => {
+    setFormData((prev) => ({
+      ...prev,
+      productPrices: [
+        ...prev.productPrices,
+        {
+          id: `price-${Date.now()}`,
+          priceType: 'wholesale',
+          minQuantity: 1,
+          price: 0,
+          locationId: '',
+          customerGroup: '',
+          startsAt: '',
+          endsAt: '',
+          active: true,
+          priority: 100,
+        },
+      ],
+    }));
+  };
+
+  const handlePriceRuleChange = <K extends keyof ProductPriceRule>(
+    id: string,
+    field: K,
+    value: ProductPriceRule[K],
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      productPrices: prev.productPrices.map((rule) => (rule.id === id ? { ...rule, [field]: value } : rule)),
+    }));
+  };
+
+  const removePriceRule = (id: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      productPrices: prev.productPrices.filter((rule) => rule.id !== id),
+    }));
+  };
+
   const handleUnitChange = (option: SelectOption | null) => {
     setFormData((prev) => ({ ...prev, unitId: option?.value ?? '', subUnitIds: [] }));
   };
@@ -1140,6 +1239,35 @@ export default function EditProduct() {
       const brochureUrl = formData.brochure ? await fileToDataURL(formData.brochure) : '';
       const brochureName = formData.brochure ? formData.brochure.name : formData.brochureRemoved ? '' : formData.brochureName;
       const brochureLink = formData.brochure ? brochureUrl : formData.brochureRemoved ? '' : formData.brochureUrl;
+      const productPrices =
+        formData.productType === 'single'
+          ? [
+              {
+                price_type: 'retail' as const,
+                min_quantity: 1,
+                price: formData.defaultSellingPrice,
+                location_id: null,
+                customer_group: null,
+                starts_at: null,
+                ends_at: null,
+                active: true,
+                priority: 100,
+              },
+              ...formData.productPrices
+                .filter((rule) => rule.price > 0)
+                .map((rule) => ({
+                  price_type: rule.priceType,
+                  min_quantity: Math.max(1, rule.minQuantity || 1),
+                  price: rule.price,
+                  location_id: rule.locationId || null,
+                  customer_group: rule.customerGroup.trim() || null,
+                  starts_at: rule.startsAt || null,
+                  ends_at: rule.endsAt || null,
+                  active: rule.active,
+                  priority: rule.priority || 100,
+                })),
+            ]
+          : [];
 
       const payload: CreateProductPayload = {
         name: formData.name.trim(),
@@ -1173,6 +1301,7 @@ export default function EditProduct() {
         currency_code: currencyCode,
         currency_symbol_placement: currencyPlacement,
         currency_precision: currencyPrecision,
+        product_prices: productPrices,
         images: serializedImages,
         combo_items: comboItems.map((item) => ({
           product_id: item.productId,
@@ -1839,6 +1968,162 @@ export default function EditProduct() {
               <p className="mt-1 text-xs text-muted-foreground">
                 You can adjust this manually without changing the profit percentage.
               </p>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-border bg-background p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Advanced selling prices</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Retail is saved from the default selling price above. Manage wholesale, tiered, location, promotion, or customer group rules here.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddPriceRule}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add price
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-dashed border-border bg-surface-alt/60 p-3 text-xs text-muted-foreground">
+              Retail price: <span className="font-semibold text-foreground">{formatMoney(formData.defaultSellingPrice, currencyCode, currencyPrecision, currencyPlacement)}</span>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {formData.productPrices.length === 0 ? (
+                <div className="rounded-lg border border-border bg-surface-alt p-4 text-sm text-muted-foreground">
+                  No extra price rules yet. Add one when this product needs wholesale, tiered, promotional, customer group, or location-specific pricing.
+                </div>
+              ) : (
+                formData.productPrices.map((rule) => (
+                  <div key={rule.id} className="rounded-lg border border-border bg-card p-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <FieldLabel>Rule Type</FieldLabel>
+                        <select
+                          value={rule.priceType}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'priceType', e.target.value as ProductPriceType)}
+                          className={baseSelectClass}
+                        >
+                          {productPriceTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <FieldLabel>Price</FieldLabel>
+                        <MoneyInput
+                          value={rule.price > 0 ? String(rule.price) : ''}
+                          onChange={(value) => handlePriceRuleChange(rule.id, 'price', moneyInputToNumber(normalizeMoneyInput(value)))}
+                          onFocus={(e) => e.currentTarget.select()}
+                          currencyCode={currencyCode}
+                          currencyPrecision={currencyPrecision}
+                          currencyPlacement={currencyPlacement}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Minimum Qty</FieldLabel>
+                        <input
+                          type="number"
+                          min={1}
+                          value={rule.minQuantity}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'minQuantity', Math.max(1, parseFloat(e.target.value) || 1))}
+                          className={baseFieldClass}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Priority</FieldLabel>
+                        <input
+                          type="number"
+                          value={rule.priority}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'priority', parseInt(e.target.value, 10) || 100)}
+                          className={baseFieldClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <FieldLabel>Location</FieldLabel>
+                        <select
+                          value={rule.locationId}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'locationId', e.target.value)}
+                          className={baseSelectClass}
+                        >
+                          <option value="">All locations</option>
+                          {locationOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <FieldLabel>Customer Group</FieldLabel>
+                        <input
+                          type="text"
+                          value={rule.customerGroup}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'customerGroup', e.target.value)}
+                          placeholder="Example: VIP, Distributor"
+                          className={baseFieldClass}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Starts At</FieldLabel>
+                        <input
+                          type="datetime-local"
+                          value={rule.startsAt}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'startsAt', e.target.value)}
+                          className={baseFieldClass}
+                        />
+                      </div>
+
+                      <div>
+                        <FieldLabel>Ends At</FieldLabel>
+                        <input
+                          type="datetime-local"
+                          value={rule.endsAt}
+                          onChange={(e) => handlePriceRuleChange(rule.id, 'endsAt', e.target.value)}
+                          className={baseFieldClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <ToggleSwitch
+                          checked={rule.active}
+                          onChange={() => handlePriceRuleChange(rule.id, 'active', !rule.active)}
+                          ariaLabel={`Toggle ${rule.priceType} price rule`}
+                        />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {rule.active ? 'Active rule' : 'Inactive rule'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removePriceRule(rule.id)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </SectionCard>

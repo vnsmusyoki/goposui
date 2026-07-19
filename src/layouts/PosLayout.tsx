@@ -55,22 +55,42 @@ import { useTheme } from "@/theme/ThemeProvider";
 // TYPES
 // ============================================
 
-interface Product {
+export interface PosProduct {
   id: string;
   name: string;
   sku: string;
   price: number;
+  priceRules?: PosProductPriceRule[];
   cost: number;
   stock: number;
   category: string;
   brand: string;
   image: string;
-  status: "active" | "draft" | "out_of_stock";
+  status: "active" | "inactive" | "draft";
   barcode: string;
   weight?: number;
   dimensions?: string;
   tax_rate?: number;
 }
+
+export interface PosProductPriceRule {
+  id: string;
+  priceType: "retail" | "wholesale" | "tier" | "location" | "promotion" | "customer_group";
+  minQuantity: number;
+  price: number;
+  locationId?: string;
+  customerGroup?: string;
+  startsAt?: string;
+  endsAt?: string;
+  active: boolean;
+  priority: number;
+}
+
+export type PosCategoryFilter = {
+  id: string;
+  label: string;
+  count: number;
+};
 
 interface CartItem {
   id: string;
@@ -82,9 +102,10 @@ interface CartItem {
   total: number;
   image: string;
   tax_rate: number;
+  stock: number;
 }
 
-interface Customer {
+export interface PosCustomer {
   id: string;
   name: string;
   email: string;
@@ -105,7 +126,7 @@ interface Order {
   total: number;
   payment_method: string;
   payment_status: "paid" | "unpaid" | "refunded";
-  customer?: Customer;
+  customer?: PosCustomer;
   created_at: string;
   status: "pending" | "completed" | "cancelled";
   notes?: string;
@@ -121,270 +142,6 @@ interface QueueItem {
   created_at: string;
 }
 
-// ============================================
-// MOCK DATA
-// ============================================
-
-const BASE_PRODUCTS: Product[] = [
-  {
-    id: "prod_1",
-    name: "Calamari Rings",
-    sku: "APP-001",
-    price: 8.5,
-    cost: 4.0,
-    stock: 145,
-    category: "Appetizer",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=200",
-    status: "active",
-    barcode: "4905524424988",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_2",
-    name: "Mozzarella Sticks",
-    sku: "APP-002",
-    price: 10.25,
-    cost: 5.0,
-    stock: 89,
-    category: "Appetizer",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1531749668029-2db88e4276c7?w=200",
-    status: "active",
-    barcode: "4905524424989",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_3",
-    name: "Cream of Mushroom",
-    sku: "SOUP-001",
-    price: 10.99,
-    cost: 4.5,
-    stock: 320,
-    category: "Soups",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1547592180-85f173990554?w=200",
-    status: "active",
-    barcode: "4905524424990",
-    tax_rate: 0.06,
-  },
-  {
-    id: "prod_4",
-    name: "Chicken Alfredo",
-    sku: "MAIN-001",
-    price: 15.99,
-    cost: 8.0,
-    stock: 56,
-    category: "Main Course",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1645112411341-6c4fd023714a?w=200",
-    status: "active",
-    barcode: "4905524424991",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_5",
-    name: "Filet Mignon",
-    sku: "MAIN-002",
-    price: 26.49,
-    cost: 15.0,
-    stock: 78,
-    category: "Main Course",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1544025162-d76694265947?w=200",
-    status: "active",
-    barcode: "4905524424992",
-    tax_rate: 0.06,
-  },
-  {
-    id: "prod_6",
-    name: "Caesar Salad",
-    sku: "SAL-001",
-    price: 8.49,
-    cost: 3.5,
-    stock: 34,
-    category: "Salads",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1550304943-4f24f54ddde9?w=200",
-    status: "active",
-    barcode: "4905524424993",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_7",
-    name: "Chicken Noodle Soup",
-    sku: "SOUP-002",
-    price: 10.49,
-    cost: 4.0,
-    stock: 234,
-    category: "Soups",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=200",
-    status: "active",
-    barcode: "4905524424994",
-    tax_rate: 0.06,
-  },
-  {
-    id: "prod_8",
-    name: "Spinach Artichoke Dip",
-    sku: "APP-003",
-    price: 8.85,
-    cost: 4.0,
-    stock: 167,
-    category: "Appetizer",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1626200758562-3a55dcae23f4?w=200",
-    status: "active",
-    barcode: "4905524424995",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_9",
-    name: "Chef Salad",
-    sku: "SAL-002",
-    price: 10.49,
-    cost: 5.0,
-    stock: 45,
-    category: "Salads",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1512852939750-1305098529bf?w=200",
-    status: "active",
-    barcode: "4905524424996",
-    tax_rate: 0.06,
-  },
-  {
-    id: "prod_10",
-    name: "Minestrone Soup",
-    sku: "SOUP-003",
-    price: 8.0,
-    cost: 3.0,
-    stock: 28,
-    category: "Soups",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1547592180-85f173990554?w=200",
-    status: "active",
-    barcode: "4905524424997",
-    tax_rate: 0.08,
-  },
-  {
-    id: "prod_11",
-    name: "Clam Chowder",
-    sku: "SOUP-004",
-    price: 9.75,
-    cost: 4.0,
-    stock: 60,
-    category: "Soups",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1607330288784-7dad86e0e2ba?w=200",
-    status: "active",
-    barcode: "4905524424998",
-    tax_rate: 0.06,
-  },
-  {
-    id: "prod_12",
-    name: "Caprese Salad",
-    sku: "SAL-003",
-    price: 9.5,
-    cost: 4.5,
-    stock: 40,
-    category: "Salads",
-    brand: "Kitchen",
-    image:
-      "https://images.unsplash.com/photo-1595587870672-c79b47875c6a?w=200",
-    status: "active",
-    barcode: "4905524424999",
-    tax_rate: 0.06,
-  },
-];
-
-const DEMO_PRODUCT_NAMES = [
-  "Grilled Chicken Bowl",
-  "Beef Burger",
-  "Loaded Fries",
-  "Fish Tacos",
-  "Veggie Wrap",
-  "Pesto Pasta",
-  "BBQ Ribs",
-  "Greek Salad",
-  "Tomato Bisque",
-  "Garlic Bread",
-  "Shrimp Skewers",
-  "Turkey Club",
-  "Margherita Pizza",
-  "Chicken Wings",
-  "Steak Sandwich",
-  "Quinoa Bowl",
-  "Cobb Salad",
-  "French Onion Soup",
-  "Buffalo Cauliflower",
-  "Lamb Kofta",
-  "Seafood Pasta",
-  "Garden Sandwich",
-  "Tuna Melt",
-  "Crispy Chicken",
-  "Avocado Toast",
-  "Roast Beef Plate",
-  "Mango Smoothie",
-  "Iced Latte",
-  "Lemonade",
-  "Chocolate Mousse",
-];
-
-const MOCK_PRODUCTS: Product[] = [
-  ...BASE_PRODUCTS,
-  ...DEMO_PRODUCT_NAMES.map((name, index) => {
-    const source = BASE_PRODUCTS[index % BASE_PRODUCTS.length];
-    const demoIndex = index + 13;
-
-    return {
-      ...source,
-      id: `prod_${demoIndex}`,
-      name,
-      sku: `DEMO-${String(index + 1).padStart(3, "0")}`,
-      price: Number((source.price + 1.25 + index * 0.35).toFixed(2)),
-      cost: Number((source.cost + 0.75 + index * 0.15).toFixed(2)),
-      stock: 30 + index * 7,
-      barcode: `49055244250${String(index).padStart(2, "0")}`,
-    };
-  }),
-];
-
-const MOCK_CUSTOMERS: Customer[] = [
-  {
-    id: "cust_1",
-    name: "John Doe",
-    email: "john@example.com",
-    phone: "+1 (555) 123-4567",
-    address: "123 Main St, New York, NY 10001",
-    loyalty_points: 2450,
-    tier: "gold",
-    total_orders: 12,
-    total_spent: 2450.5,
-  },
-  {
-    id: "cust_2",
-    name: "Jane Smith",
-    email: "jane@example.com",
-    phone: "+1 (555) 234-5678",
-    address: "456 Oak Ave, Los Angeles, CA 90001",
-    loyalty_points: 1890,
-    tier: "silver",
-    total_orders: 8,
-    total_spent: 1890.75,
-  },
-];
-
 const CATEGORY_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   All: LayoutGrid,
   "Main Course": Beef,
@@ -399,6 +156,14 @@ type ChargeEditor = {
   value: number;
   setter: (next: number) => void;
 } | null;
+
+type PosLayoutProps = {
+  products?: PosProduct[];
+  categories?: PosCategoryFilter[];
+  customers?: PosCustomer[];
+  productsLoading?: boolean;
+  productsError?: string | null;
+};
 
 // ============================================
 // UTILITY FUNCTIONS
@@ -418,7 +183,13 @@ const getTierColor = (tier: string): string => {
 // MAIN POS COMPONENT
 // ============================================
 
-const PosLayout = () => {
+const PosLayout = ({
+  products = [],
+  categories = [{ id: "All", label: "All", count: 0 }],
+  customers = [],
+  productsLoading = false,
+  productsError = null,
+}: PosLayoutProps) => {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
   const { formatCurrency } = useBusinessCurrency();
@@ -426,34 +197,19 @@ const PosLayout = () => {
   const { resolvedTheme, toggleTheme } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedCategory, setSelectedCategory] = useState(categories[0]?.id ?? "All");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [pricingMode, setPricingMode] = useState<"retail" | "wholesale">("retail");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+  const [selectedCustomer, setSelectedCustomer] = useState<PosCustomer | null>(
     null,
   );
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
-  const [queueItems, setQueueItems] = useState<QueueItem[]>([
-    {
-      id: "q1",
-      customer_name: "Table 4",
-      status: "waiting",
-      position: 1,
-      estimated_time: 12,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: "q2",
-      customer_name: "Table 7",
-      status: "serving",
-      position: 2,
-      estimated_time: 3,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<
     "cash" | "card" | "mobile" | "gift"
   >("card");
@@ -502,36 +258,80 @@ const PosLayout = () => {
 
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery.trim()) {
-      return MOCK_CUSTOMERS;
+      return customers;
     }
 
     const query = customerSearchQuery.toLowerCase();
-    return MOCK_CUSTOMERS.filter(
+    return customers.filter(
       (customer) =>
         customer.name.toLowerCase().includes(query) ||
         customer.email.toLowerCase().includes(query) ||
         customer.phone.toLowerCase().includes(query),
     );
-  }, [customerSearchQuery]);
+  }, [customerSearchQuery, customers]);
 
   const filteredProducts = useMemo(() => {
-    let products = MOCK_PRODUCTS;
+    let visibleProducts = products;
     if (selectedCategory !== "All") {
-      products = products.filter((p) => p.category === selectedCategory);
+      visibleProducts = visibleProducts.filter((p) => p.category === selectedCategory);
     }
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      products = products.filter(
+      visibleProducts = visibleProducts.filter(
         (p) =>
           p.name.toLowerCase().includes(query) ||
           p.sku.toLowerCase().includes(query) ||
-          p.barcode.includes(query),
+          p.barcode.includes(query) ||
+          p.brand.toLowerCase().includes(query) ||
+          p.category.toLowerCase().includes(query),
       );
     }
-    return products;
-  }, [searchQuery, selectedCategory]);
+    return visibleProducts;
+  }, [products, searchQuery, selectedCategory]);
 
-  const categories = ["All", ...new Set(MOCK_PRODUCTS.map((p) => p.category))];
+  const getProductPrice = (product: PosProduct, quantity = 1) => {
+    const now = Date.now();
+    const matchingRules = (product.priceRules ?? [])
+      .filter((rule) => {
+        if (!rule.active || rule.price <= 0 || rule.minQuantity > quantity) {
+          return false;
+        }
+        if (pricingMode === "retail" && rule.priceType !== "retail") {
+          return false;
+        }
+        if (pricingMode === "wholesale" && !["wholesale", "tier"].includes(rule.priceType)) {
+          return false;
+        }
+        if (rule.startsAt && new Date(rule.startsAt).getTime() > now) {
+          return false;
+        }
+        if (rule.endsAt && new Date(rule.endsAt).getTime() < now) {
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => a.priority - b.priority || b.minQuantity - a.minQuantity);
+
+    return matchingRules[0]?.price ?? product.price;
+  };
+
+  useEffect(() => {
+    setCart((currentCart) =>
+      currentCart.map((item) => {
+        const product = products.find((candidate) => candidate.id === item.product_id);
+        if (!product) {
+          return item;
+        }
+        const nextPrice = getProductPrice(product, item.quantity);
+        return {
+          ...item,
+          price: nextPrice,
+          total: nextPrice * item.quantity,
+        };
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricingMode, products]);
 
   const toast = {
     success: (message: string) => console.log("✅", message),
@@ -564,21 +364,46 @@ const PosLayout = () => {
     setChargeEditValue("");
   };
 
-  const handleAddToCart = (product: Product) => {
+  useEffect(() => {
+    if (categories.some((category) => category.id === selectedCategory)) {
+      return;
+    }
+
+    setSelectedCategory(categories[0]?.id ?? "All");
+  }, [categories, selectedCategory]);
+
+  const handleAddToCart = (product: PosProduct) => {
+    const availableQuantity = Math.max(0, product.stock);
+    if (availableQuantity <= 0) {
+      toast.error("This product has no available quantity.");
+      return;
+    }
+
     const existingItem = cart.find((item) => item.product_id === product.id);
     if (existingItem) {
+      if (existingItem.quantity >= availableQuantity) {
+        toast.error("Cannot add more than the available quantity.");
+        return;
+      }
+
       setCart(
         cart.map((item) =>
           item.product_id === product.id
-            ? {
-                ...item,
-                quantity: item.quantity + 1,
-                total: (item.quantity + 1) * item.price,
-              }
+            ? (() => {
+                const nextQuantity = item.quantity + 1;
+                const nextPrice = getProductPrice(product, nextQuantity);
+                return {
+                  ...item,
+                  quantity: nextQuantity,
+                  price: nextPrice,
+                  total: nextQuantity * nextPrice,
+                };
+              })()
             : item,
         ),
       );
     } else {
+      const productPrice = getProductPrice(product, 1);
       setCart([
         ...cart,
         {
@@ -587,10 +412,11 @@ const PosLayout = () => {
           name: product.name,
           sku: product.sku,
           quantity: 1,
-          price: product.price,
-          total: product.price,
+          price: productPrice,
+          total: productPrice,
           image: product.image,
           tax_rate: product.tax_rate || 0.08,
+          stock: availableQuantity,
         },
       ]);
     }
@@ -609,10 +435,17 @@ const PosLayout = () => {
           if (item.id === itemId) {
             const newQuantity = Math.max(0, item.quantity + change);
             if (newQuantity === 0) return null;
+            if (newQuantity > item.stock) {
+              toast.error("Cannot add more than the available quantity.");
+              return item;
+            }
+            const product = products.find((candidate) => candidate.id === item.product_id);
+            const nextPrice = product ? getProductPrice(product, newQuantity) : item.price;
             return {
               ...item,
               quantity: newQuantity,
-              total: newQuantity * item.price,
+              price: nextPrice,
+              total: newQuantity * nextPrice,
             };
           }
           return item;
@@ -627,14 +460,23 @@ const PosLayout = () => {
 
   const handleClearCart = () => {
     if (cart.length === 0) return;
-    if (window.confirm("Clear all items from this order?")) {
-      setCart([]);
-      setOrderNotes("");
-    }
+    setShowClearCartModal(true);
+  };
+
+  const handleConfirmClearCart = () => {
+    setCart([]);
+    setOrderNotes("");
+    setDiscountAmount(0);
+    setTaxOverride(null);
+    setShippingCharge(0);
+    setPackingCharge(0);
+    setCashAmount(null);
+    setShowPaymentModal(false);
+    setShowClearCartModal(false);
   };
 
   const handleBarcodeScan = (barcode: string) => {
-    const product = MOCK_PRODUCTS.find((p) => p.barcode === barcode);
+    const product = products.find((p) => p.barcode === barcode);
     if (product) {
       handleAddToCart(product);
       setBarcodeInput("");
@@ -707,7 +549,7 @@ const PosLayout = () => {
     }
   };
 
-  const handleSelectCustomer = (customer: Customer) => {
+  const handleSelectCustomer = (customer: PosCustomer) => {
     setSelectedCustomer(customer);
     setShowCustomerSearch(false);
     setCustomerSearchQuery("");
@@ -772,6 +614,22 @@ const PosLayout = () => {
         <div className="mx-auto w-full px-4 py-2 lg:px-6">
           <div className="flex w-full items-center justify-end">
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+              <div className="inline-flex h-10 shrink-0 items-center rounded-full border border-primary/25 bg-primary/10 p-1">
+                {(["retail", "wholesale"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPricingMode(mode)}
+                    className={`h-8 rounded-full px-3 text-[11px] font-semibold capitalize transition-colors ${
+                      pricingMode === mode
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={() => setShowQueue(true)}
@@ -869,20 +727,23 @@ const PosLayout = () => {
 
           <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
             {categories.map((category) => {
-              const Icon = CATEGORY_ICONS[category] ?? LayoutGrid;
+              const Icon = CATEGORY_ICONS[category.label] ?? LayoutGrid;
               return (
                 <button
-                  key={category}
+                  key={category.id}
                   type="button"
-                  onClick={() => setSelectedCategory(category)}
+                  onClick={() => setSelectedCategory(category.id)}
                   className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                    selectedCategory === category
+                    selectedCategory === category.id
                       ? "bg-primary text-primary-foreground"
                       : "bg-surface text-muted-foreground border border-border hover:border-primary/30"
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
-                  {category}
+                  {category.label}
+                  <span className="rounded-full bg-current/10 px-1.5 py-0.5 text-[10px] font-semibold">
+                    {category.count}
+                  </span>
                 </button>
               );
             })}
@@ -891,7 +752,24 @@ const PosLayout = () => {
           <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 pb-4">
           {viewMode === "grid" ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-6">
-              {filteredProducts.length === 0 ? (
+              {productsLoading && filteredProducts.length === 0 ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                  <p className="mt-3 text-sm font-semibold text-foreground">
+                    Loading products
+                  </p>
+                </div>
+              ) : productsError ? (
+                <div className="col-span-full rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
+                  <Package className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <p className="mt-3 text-sm font-semibold text-foreground">
+                    Unable to load products
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {productsError}
+                  </p>
+                </div>
+              ) : filteredProducts.length === 0 ? (
                 <div className="col-span-full rounded-2xl border border-dashed border-border bg-surface p-10 text-center">
                   <Package className="mx-auto h-8 w-8 text-muted-foreground" />
                   <p className="mt-3 text-sm font-semibold text-foreground">
@@ -903,15 +781,27 @@ const PosLayout = () => {
                 </div>
               ) : (
                 filteredProducts.map((product) => {
-                  const inCart = cart.some(
+                  const cartLine = cart.find(
                     (item) => item.product_id === product.id,
                   );
+                  const inCart = Boolean(cartLine);
+                  const availableQuantity = Math.max(0, product.stock);
+                  const quantityReached =
+                    availableQuantity <= 0 ||
+                    (cartLine?.quantity ?? 0) >= availableQuantity;
+                  const displayPrice = getProductPrice(product, Math.max(1, cartLine?.quantity ?? 1));
                   return (
                     <button
                       key={product.id}
                       type="button"
                       onClick={() => handleAddToCart(product)}
-                      className={`group overflow-hidden rounded-[1.25rem] border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                      disabled={quantityReached}
+                      title={
+                        quantityReached
+                          ? "Available quantity reached"
+                          : `Add ${product.name}`
+                      }
+                      className={`group overflow-hidden rounded-[1.25rem] border bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm ${
                         inCart
                       ? "border-primary ring-1 ring-primary/20"
                       : "border-border hover:border-primary/30"
@@ -932,11 +822,24 @@ const PosLayout = () => {
                         <p className="truncate text-[11px] text-muted-foreground">
                           {product.brand || "Unbranded"} · {product.category}
                         </p>
+                        <p
+                          className={`text-[11px] font-medium ${
+                            availableQuantity > 0
+                              ? "text-muted-foreground"
+                              : "text-destructive"
+                          }`}
+                        >
+                          Stock available: {availableQuantity}
+                        </p>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-bold text-primary">
-                            {formatCurrency(product.price)}
+                            {formatCurrency(displayPrice)}
                           </span>
-                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground shadow-sm shadow-success/20">
+                          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full shadow-sm ${
+                            quantityReached
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-success text-success-foreground shadow-success/20"
+                          }`}>
                             <Plus className="h-3 w-3" />
                           </span>
                         </div>
@@ -968,15 +871,27 @@ const PosLayout = () => {
                   </div>
                 ) : (
                   filteredProducts.map((product) => {
-                    const inCart = cart.some(
+                    const cartLine = cart.find(
                       (item) => item.product_id === product.id,
                     );
+                    const inCart = Boolean(cartLine);
+                    const availableQuantity = Math.max(0, product.stock);
+                    const quantityReached =
+                      availableQuantity <= 0 ||
+                      (cartLine?.quantity ?? 0) >= availableQuantity;
+                    const displayPrice = getProductPrice(product, Math.max(1, cartLine?.quantity ?? 1));
                     return (
                       <button
                         key={product.id}
                         type="button"
                         onClick={() => handleAddToCart(product)}
-                        className={`grid w-full grid-cols-[minmax(0,1.4fr)_120px_110px_110px_92px] items-center gap-3 border-t border-border px-4 py-3 text-left transition-colors hover:bg-surface-alt/40 ${
+                        disabled={quantityReached}
+                        title={
+                          quantityReached
+                            ? "Available quantity reached"
+                            : `Add ${product.name}`
+                        }
+                        className={`grid w-full grid-cols-[minmax(0,1.4fr)_120px_110px_110px_92px] items-center gap-3 border-t border-border px-4 py-3 text-left transition-colors hover:bg-surface-alt/40 disabled:cursor-not-allowed disabled:opacity-60 ${
                           inCart ? "bg-primary/10" : "bg-surface"
                         }`}
                       >
@@ -1001,13 +916,17 @@ const PosLayout = () => {
                           {product.brand || "Unbranded"}
                         </span>
                         <span className="text-sm font-semibold text-primary">
-                          {formatCurrency(product.price)}
+                          {formatCurrency(displayPrice)}
                         </span>
                         <span className="text-sm text-muted-foreground">
                           {product.stock}
                         </span>
                         <span className="flex justify-end">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-success text-success-foreground shadow-sm shadow-success/20">
+                          <span className={`inline-flex h-8 w-8 items-center justify-center rounded-full shadow-sm ${
+                            quantityReached
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-success text-success-foreground shadow-success/20"
+                          }`}>
                             <Plus className="h-3.5 w-3.5" />
                           </span>
                         </span>
@@ -1079,7 +998,7 @@ const PosLayout = () => {
                   No items yet
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Tap a dish from the menu to add it here.
+                  Tap a item from the list to add it here.
                 </p>
               </div>
             ) : (
@@ -1117,7 +1036,13 @@ const PosLayout = () => {
                     <button
                       type="button"
                       onClick={() => handleUpdateQuantity(item.id, 1)}
-                      className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground"
+                      disabled={item.quantity >= item.stock}
+                      className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        item.quantity >= item.stock
+                          ? "Available quantity reached"
+                          : "Increase quantity"
+                      }
                     >
                       <Plus className="h-3 w-3" />
                     </button>
@@ -1327,6 +1252,65 @@ const PosLayout = () => {
                   </button>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showClearCartModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm"
+          onClick={() => setShowClearCartModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-foreground">
+                  Clear cart?
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  This will remove all cart items and reset the current order
+                  charges.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-border bg-background px-3 py-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Items</span>
+                <span className="font-semibold text-foreground">
+                  {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                </span>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="text-muted-foreground">Current total</span>
+                <span className="font-semibold text-foreground">
+                  {formatCurrency(cartTotal)}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setShowClearCartModal(false)}
+                className="rounded-xl border border-border px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearCart}
+                className="rounded-xl bg-destructive px-4 py-2.5 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90"
+              >
+                Clear Cart
+              </button>
             </div>
           </div>
         </div>
