@@ -43,6 +43,8 @@ export type CreateSaleOrderInput = {
   items: CreateSaleOrderItemInput[];
 };
 
+export type UpdateSaleOrderInput = CreateSaleOrderInput;
+
 export type SalesOrderListItem = {
   id: string;
   businessId: string;
@@ -74,6 +76,10 @@ type SaleOrderResponse = {
   message?: string;
 };
 
+type DeleteSaleOrderResponse = {
+  message?: string;
+};
+
 type SalesOrdersResponse = {
   salesOrders: SalesOrderListItem[];
   message?: string;
@@ -92,7 +98,9 @@ type SaleOrdersStore = {
   error: string | null;
   loadSalesOrders: (filters?: Record<string, string | undefined>) => Promise<SalesOrderListItem[]>;
   createSaleOrder: (data: CreateSaleOrderInput) => Promise<SaleOrderResponse>;
+  updateSaleOrder: (id: string, data: UpdateSaleOrderInput) => Promise<SaleOrderResponse>;
   updateSaleOrderStatus: (id: string, data: UpdateSalesOrderStatusInput) => Promise<SaleOrderResponse>;
+  deleteSaleOrder: (id: string) => Promise<DeleteSaleOrderResponse>;
   clearError: () => void;
 };
 
@@ -147,6 +155,24 @@ export function useSalesOrders() {
     }
   }, []);
 
+  const updateSaleOrder = useCallback(async (id: string, data: UpdateSaleOrderInput) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      return await apiRequest<SaleOrderResponse>(`/sales/orders/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to update sale order.';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const updateSaleOrderStatus = useCallback(async (id: string, data: UpdateSalesOrderStatusInput) => {
     setIsSaving(true);
     setError(null);
@@ -165,6 +191,23 @@ export function useSalesOrders() {
     }
   }, []);
 
+  const deleteSaleOrder = useCallback(async (id: string) => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      return await apiRequest<DeleteSaleOrderResponse>(`/sales/orders/${id}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to delete sale order.';
+      setError(message);
+      throw err;
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
   return {
     salesOrders,
     loading,
@@ -173,7 +216,9 @@ export function useSalesOrders() {
     error,
     loadSalesOrders,
     createSaleOrder,
+    updateSaleOrder,
     updateSaleOrderStatus,
+    deleteSaleOrder,
     clearError,
   };
 }

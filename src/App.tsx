@@ -50,6 +50,8 @@ import Customers from './pages/business/contacts/customers/Customers'
 import CustomerProfile from './pages/business/contacts/customers/CustomerProfile'
 import SalesOrders from './pages/business/sales/SalesOrders'
 import CreateSaleOrder from './pages/business/sales/CreateSaleOrder'
+import SaleOrderDetails from './pages/business/sales/SaleOrderDetails'
+import EditSaleOrder from './pages/business/sales/EditSaleOrder'
 
 function App() {
   return (
@@ -138,6 +140,8 @@ function App() {
           {/* SELLS */}
            <Route path="/sales/order" element={<SalesOrders />} />
            <Route path="/sales/order/create" element={<CreateSaleOrder />} />
+           <Route path="/sales/order/:id/view" element={<SaleOrderDetails />} />
+           <Route path="/sales/order/:id/edit" element={<EditSaleOrder />} />
         </Route>
       </Route>
 

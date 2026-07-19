@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import Select, { type StylesConfig } from 'react-select';
 import { CKEditor } from '@ckeditor/ckeditor5-react';
 import { ClassicEditor, Essentials, Paragraph, Heading, Bold, Italic, Link, List, BlockQuote, Undo } from 'ckeditor5';
@@ -9,6 +9,7 @@ import {
   Save,
   Plus,
   Search,
+  Loader2,
   X,
   Trash2, 
   MapPin,
@@ -20,7 +21,7 @@ import {
   Truck,
   Users, 
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parse, isValid } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useBusinessLocations } from '@/hooks/business/settings/useBusinessLocations';
 import { useBusinessSettings } from '@/hooks/business/settings/useBusinessSettings';
@@ -28,6 +29,7 @@ import { usePurchasesSettings } from '@/hooks/business/settings/usePurchasesSett
 import { useProductSettings } from '@/hooks/business/settings/useProductSettings';
 import { useBusinessCustomers } from '@/hooks/business/customers/useBusinessCustomers';
 import { useProducts, type ProductSearchResult } from '@/hooks/business/products/useProducts';
+import { useSalesOrderDetails } from '@/hooks/business/sales/useSalesOrderDetails';
 import { useSalesOrders, type SaleOrderStatus } from '@/hooks/business/sales/useSalesOrders';
 import DatePickerField from '@/components/forms/DatePickerField';
 import { ApiError } from '@/lib/api';
@@ -97,6 +99,15 @@ type AdditionalExpense = {
   amount: number;
 };
 
+const SALE_ORDER_STATUSES: SaleOrderStatus[] = [
+  'draft',
+  'pending_approval',
+  'approved',
+  'processing',
+  'ready_for_shipment',
+  'completed',
+];
+
 function getTaxAmountFromStoredPrices(
   purchasePriceExclusive: number,
   purchasePriceInclusive: number,
@@ -111,6 +122,79 @@ function getTaxAmountFromStoredPrices(
   }
 
   return 0;
+}
+
+function isSaleOrderStatus(value: string): value is SaleOrderStatus {
+  return SALE_ORDER_STATUSES.includes(value as SaleOrderStatus);
+}
+
+function parseSaleOrderDate(value?: string) {
+  const input = value?.trim();
+  if (!input) {
+    return format(new Date(), 'yyyy-MM-dd');
+  }
+
+  const patterns = ['dd MMM yyyy, hh:mm a', 'dd MMM yyyy, h:mm a', 'dd MMM yyyy'];
+
+  for (const pattern of patterns) {
+    const parsed = parse(input, pattern, new Date());
+    if (isValid(parsed)) {
+      return format(parsed, 'yyyy-MM-dd');
+    }
+  }
+
+  const fallback = new Date(input);
+  return isValid(fallback) ? format(fallback, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
+}
+
+function mapSalesOrderItemToFormItem(item: {
+  id: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  discountPercentage: number;
+  discountAmount: number;
+  taxRate: number;
+  taxAmount: number;
+  unitPrice: number;
+  lineTotal: number;
+  batchTrackingEnabled: boolean;
+  sortOrder: number;
+}): PurchaseOrderItem {
+  const quantity = Number(item.quantity ?? 0);
+  const unitPrice = Number(item.unitPrice ?? 0);
+  const unitCost = Number(item.unitCost ?? 0);
+  const taxRate = Number(item.taxRate ?? 0);
+  const taxAmount = Number(item.taxAmount ?? 0);
+
+  return {
+    id: item.id,
+    productId: item.productId,
+    productName: item.productName,
+    sku: item.sku,
+    unit: item.unit,
+    availableStock: 0,
+    orderQuantity: quantity,
+    unitCostBeforeDiscount: unitPrice,
+    discountPercentage: Number(item.discountPercentage ?? 0),
+    discountAmount: Number(item.discountAmount ?? 0),
+    unitCostBeforeTax: unitCost,
+    productTaxRate: taxRate,
+    taxType: taxRate > 0 ? 'exclusive' : 'none',
+    purchasePriceExclusive: unitCost,
+    purchasePriceInclusive: unitPrice,
+    taxAmount,
+    netCost: unitPrice,
+    sellingPrice: unitPrice,
+    isSellingPriceManual: true,
+    lineCost: Number(item.lineTotal ?? unitPrice * quantity),
+    expiryDate: '',
+    lotNumber: '',
+    receivedQuantity: quantity,
+  };
 }
 
 type ToggleSwitchProps = {
@@ -504,15 +588,23 @@ function ProductSearchResultCard({
 // Main Component
 // --------------------------------------------------------------------------
 
-export default function CreateSaleOrder() {
+export default function EditSaleOrder() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   const { settings: businessSettings } = useBusinessSettings();
   const { settings: productSettings } = useProductSettings();
   const { settings: purchasesSettings } = usePurchasesSettings();
   const { locations } = useBusinessLocations();
   const { customers } = useBusinessCustomers();
   const { searchProducts, isLoading: searchLoading } = useProducts();
-  const { createSaleOrder, loading: saveLoading, error: apiError, clearError } = useSalesOrders();
+  const { updateSaleOrder, loading: saveLoading, error: apiError, clearError } = useSalesOrders();
+  const {
+    salesOrder: loadedSalesOrder,
+    loading: loadingSaleOrder,
+    error: loadSaleOrderError,
+    fetchSalesOrder,
+    clearError: clearSaleOrderError,
+  } = useSalesOrderDetails();
 
   const [formData, setFormData] = useState<FormState>({
     customerId: '',
@@ -563,6 +655,43 @@ export default function CreateSaleOrder() {
     () => locations.find((location) => location.id === formData.locationId) ?? null,
     [formData.locationId, locations],
   );
+
+  useEffect(() => {
+    if (!id) return;
+    void fetchSalesOrder(id).catch(() => undefined);
+  }, [fetchSalesOrder, id]);
+
+  useEffect(() => {
+    return () => {
+      clearSaleOrderError();
+    };
+  }, [clearSaleOrderError]);
+
+  useEffect(() => {
+    if (!loadedSalesOrder) {
+      return;
+    }
+
+    const detail = loadedSalesOrder.saleOrder;
+
+    setFormData((current) => ({
+      ...current,
+      customerId: detail.customerId,
+      referenceNumber: detail.referenceNumber,
+      orderDate: parseSaleOrderDate(detail.saleDate),
+      deliveryDate: parseSaleOrderDate(detail.saleDate),
+      locationId: detail.locationId,
+      deliveryAddress: loadedSalesOrder.location.address || loadedSalesOrder.business.branchAddress || current.deliveryAddress,
+      notes: detail.notes,
+      status: isSaleOrderStatus(detail.status) ? detail.status : 'draft',
+      reserveOrderItems: Boolean(detail.reserveOrderItems),
+    }));
+
+    setItems((loadedSalesOrder.items ?? []).map(mapSalesOrderItemToFormItem));
+    setAdditionalExpenses([]);
+    setErrors({});
+    setSubmitError(null);
+  }, [loadedSalesOrder]);
 
   useEffect(() => {
     if (formData.status === 'approved') {
@@ -837,7 +966,7 @@ export default function CreateSaleOrder() {
         total_discount: orderTotals.totalDiscount,
         total_tax: orderTotals.totalTax,
         grand_total: grandTotal,
-        reserve_order_items: formData.status === 'approved' ? formData.reserveOrderItems : false,
+        reserve_order_items: formData.reserveOrderItems,
         items_count: orderTotals.itemCount,
         total_quantity: orderTotals.totalQuantity,
         items: items.map((item, index) => ({
@@ -855,22 +984,27 @@ export default function CreateSaleOrder() {
         })),
       };
 
-      await createSaleOrder(payload);
-      toast.success(`Sale order ${statusOverride === 'draft' || formData.status === 'draft' ? 'saved as draft' : 'created'} successfully`);
+      if (!id) {
+        toast.error('Sale order id is missing');
+        return;
+      }
+
+      await updateSaleOrder(id, payload);
+      toast.success(`Sale order ${statusOverride === 'draft' || formData.status === 'draft' ? 'saved as draft' : 'updated'} successfully`);
       navigate('/sales/order');
     } catch (err) {
       if (err instanceof ApiError) {
         const apiErrors = err.data && typeof err.data === 'object' ? ((err.data as Record<string, unknown>).errors ?? {}) as Record<string, string> : {};
         if (Object.keys(apiErrors).length > 0) {
           setErrors(apiErrors);
-          setSubmitError(err.message || 'Failed to create sale order');
+          setSubmitError(err.message || 'Failed to Update Sale Order');
         } else {
-          setSubmitError(err.message || 'Failed to create sale order');
+          setSubmitError(err.message || 'Failed to Update Sale Order');
         }
       } else {
-        setSubmitError('Failed to create sale order');
+        setSubmitError('Failed to Update Sale Order');
       }
-      toast.error('Failed to create sale order');
+      toast.error('Failed to Update Sale Order');
     }
   };
 
@@ -977,6 +1111,36 @@ export default function CreateSaleOrder() {
     [apiError, errors, submitError],
   );
 
+  if (loadingSaleOrder && !loadedSalesOrder) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span>Loading sale order...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadSaleOrderError && !loadedSalesOrder) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground">
+        <div className="max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-foreground">Failed to load sale order</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{loadSaleOrderError}</p>
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-surface-alt"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Go back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 pb-10">
       {/* Header */}
@@ -992,9 +1156,9 @@ export default function CreateSaleOrder() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Create Sale Order</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground hidden sm:block">
-                Add a new sale order with products and customer details
+              <h1 className="text-xl font-bold text-foreground sm:text-2xl">Update Sale Order</h1>
+              <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
+                Update the saved sale order with the latest customer, item, and pricing details
               </p>
             </div>
           </div>
@@ -1006,7 +1170,7 @@ export default function CreateSaleOrder() {
               className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:opacity-50"
             >
               <FileText className="h-4 w-4" />
-              Save as Draft
+              Save Changes as Draft
             </button>
               <button
                 type="button"
@@ -1015,7 +1179,7 @@ export default function CreateSaleOrder() {
                 className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
-              Create Sale Order
+              Update Sale Order
               </button>
           </div>
         </div>
@@ -1606,7 +1770,7 @@ export default function CreateSaleOrder() {
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-alt disabled:opacity-50"
           >
             <FileText className="h-4 w-4" />
-            Save as Draft
+            Save Changes as Draft
           </button>
           <button
             type="button"
@@ -1615,7 +1779,7 @@ export default function CreateSaleOrder() {
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            Create Sale Order
+            Update Sale Order
           </button>
         </div>
       </div>
