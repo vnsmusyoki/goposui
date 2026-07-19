@@ -97,6 +97,7 @@ interface CartItem {
   product_id: string;
   name: string;
   sku: string;
+  brand: string;
   quantity: number;
   price: number;
   total: number;
@@ -163,6 +164,15 @@ type PosLayoutProps = {
   customers?: PosCustomer[];
   productsLoading?: boolean;
   productsError?: string | null;
+  mpesaStkPushEnabled?: boolean;
+  activeRegister?: {
+    id: string;
+    registerNumber?: string;
+    openedAt?: string;
+    openingCashAmount?: number;
+    expectedClosingCashAmount?: number;
+  } | null;
+  businessLocationName?: string;
 };
 
 // ============================================
@@ -189,9 +199,13 @@ const PosLayout = ({
   customers = [],
   productsLoading = false,
   productsError = null,
+  mpesaStkPushEnabled = false,
+  activeRegister = null,
+  businessLocationName = "",
 }: PosLayoutProps) => {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
+  const user = useAuthStore((state) => state.user);
   const { formatCurrency } = useBusinessCurrency();
   const { settings } = usePosSettings();
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -223,11 +237,19 @@ const PosLayout = ({
   const [chargeEditValue, setChargeEditValue] = useState("");
   const [showReceipt, setShowReceipt] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
+  const [completedOrders, setCompletedOrders] = useState<Order[]>([]);
+  const [showRegisterDetails, setShowRegisterDetails] = useState(false);
   const [manageDishOpen, setManageDishOpen] = useState(true);
   const [barcodeInput, setBarcodeInput] = useState("");
 
   const cartRef = useRef<HTMLDivElement>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!mpesaStkPushEnabled && paymentMethod === "mobile") {
+      setPaymentMethod("cash");
+    }
+  }, [mpesaStkPushEnabled, paymentMethod]);
 
   const cartSubtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.total, 0),
@@ -291,28 +313,40 @@ const PosLayout = ({
 
   const getProductPrice = (product: PosProduct, quantity = 1) => {
     const now = Date.now();
-    const matchingRules = (product.priceRules ?? [])
+    const activeRules = (product.priceRules ?? []).filter((rule) => {
+      if (!rule.active || rule.price <= 0 || rule.minQuantity > quantity) {
+        return false;
+      }
+      if (rule.startsAt && new Date(rule.startsAt).getTime() > now) {
+        return false;
+      }
+      if (rule.endsAt && new Date(rule.endsAt).getTime() < now) {
+        return false;
+      }
+      return true;
+    });
+
+    const automaticQuantityRule = activeRules
+      .filter((rule) => ["wholesale", "tier"].includes(rule.priceType))
+      .sort((a, b) => b.minQuantity - a.minQuantity || a.priority - b.priority)[0];
+
+    if (automaticQuantityRule) {
+      return automaticQuantityRule.price;
+    }
+
+    const selectedModeRule = activeRules
       .filter((rule) => {
-        if (!rule.active || rule.price <= 0 || rule.minQuantity > quantity) {
-          return false;
-        }
         if (pricingMode === "retail" && rule.priceType !== "retail") {
           return false;
         }
         if (pricingMode === "wholesale" && !["wholesale", "tier"].includes(rule.priceType)) {
           return false;
         }
-        if (rule.startsAt && new Date(rule.startsAt).getTime() > now) {
-          return false;
-        }
-        if (rule.endsAt && new Date(rule.endsAt).getTime() < now) {
-          return false;
-        }
         return true;
       })
       .sort((a, b) => a.priority - b.priority || b.minQuantity - a.minQuantity);
 
-    return matchingRules[0]?.price ?? product.price;
+    return selectedModeRule[0]?.price ?? product.price;
   };
 
   useEffect(() => {
@@ -411,6 +445,7 @@ const PosLayout = ({
           product_id: product.id,
           name: product.name,
           sku: product.sku,
+          brand: product.brand,
           quantity: 1,
           price: productPrice,
           total: productPrice,
@@ -499,7 +534,7 @@ const PosLayout = ({
       id: `ORD-${Date.now()}`,
       items: cart,
       subtotal: cartSubtotal,
-      tax: cartTax,
+      tax: effectiveTax,
       discount: cartDiscount,
       total: cartTotal,
       payment_method: paymentMethod,
@@ -510,6 +545,7 @@ const PosLayout = ({
       notes: orderNotes || undefined,
     };
     setCurrentOrder(order);
+    setCompletedOrders((orders) => [order, ...orders]);
 
     setTimeout(() => {
       setIsLoading(false);
@@ -601,12 +637,104 @@ const PosLayout = ({
     completed: queueItems.filter((i) => i.status === "completed").length,
   };
 
-  const navItems = [
-    { label: "Dashboard", icon: LayoutGrid },
-    { label: "Order Process", icon: Package, active: true },
-    { label: "Revenue Stat", icon: BarChart3 },
-  ];
-  const dishSubItems = ["Main Course", "Appetizer", "Soups", "Salads", "Drinks"];
+  
+  const registerOpenedAt = activeRegister?.openedAt ?? new Date().toISOString();
+  const formatRegisterDate = (value?: string) =>
+    new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(value ? new Date(value) : new Date());
+  const registerLineItems = useMemo(() => {
+    const rows = new Map<
+      string,
+      { sku: string; product: string; brand: string; quantity: number; total: number }
+    >();
+
+    for (const order of completedOrders) {
+      for (const item of order.items) {
+        const existing = rows.get(item.product_id);
+        if (existing) {
+          existing.quantity += item.quantity;
+          existing.total += item.total;
+        } else {
+          rows.set(item.product_id, {
+            sku: item.sku || "--",
+            product: item.name,
+            brand: item.brand || "Unbranded",
+            quantity: item.quantity,
+            total: item.total,
+          });
+        }
+      }
+    }
+
+    return Array.from(rows.values());
+  }, [completedOrders]);
+  const registerBrandRows = useMemo(() => {
+    const rows = new Map<string, { brand: string; quantity: number; total: number }>();
+
+    for (const item of registerLineItems) {
+      const existing = rows.get(item.brand);
+      if (existing) {
+        existing.quantity += item.quantity;
+        existing.total += item.total;
+      } else {
+        rows.set(item.brand, {
+          brand: item.brand,
+          quantity: item.quantity,
+          total: item.total,
+        });
+      }
+    }
+
+    return Array.from(rows.values());
+  }, [registerLineItems]);
+  const registerPaymentTotals = useMemo(() => {
+    return completedOrders.reduce(
+      (totals, order) => {
+        if (order.payment_status !== "paid") {
+          return totals;
+        }
+        const key =
+          order.payment_method === "mobile"
+            ? "mpesa"
+            : order.payment_method === "gift"
+              ? "other"
+              : order.payment_method;
+        totals[key as keyof typeof totals] += order.total;
+        return totals;
+      },
+      {
+        cash: 0,
+        card: 0,
+        mpesa: 0,
+        other: 0,
+      },
+    );
+  }, [completedOrders]);
+  const openingCashAmount = Number(activeRegister?.openingCashAmount ?? 0);
+  const registerTotalSales = completedOrders.reduce(
+    (sum, order) => sum + (order.payment_status === "paid" ? order.total : 0),
+    0,
+  );
+  const registerTotalRefund = completedOrders.reduce(
+    (sum, order) => sum + (order.payment_status === "refunded" ? order.total : 0),
+    0,
+  );
+  const registerTotalExpense = 0;
+  const registerTotalQuantity = registerLineItems.reduce(
+    (sum, item) => sum + item.quantity,
+    0,
+  );
+  const registerTotalPayments =
+    openingCashAmount +
+    registerPaymentTotals.cash +
+    registerPaymentTotals.card +
+    registerPaymentTotals.mpesa +
+    registerPaymentTotals.other;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -656,11 +784,11 @@ const PosLayout = ({
               </button>
               <button
                 type="button"
-                onClick={() => toast.info("Close register will be wired next.")}
+                onClick={() => setShowRegisterDetails(true)}
                 className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:border-primary/30 hover:bg-surface-alt hover:text-foreground"
               >
                 <Lock className="h-3.5 w-3.5" />
-                Close Register
+                Cash Register
               </button>
               <button
                 type="button"
@@ -1379,60 +1507,358 @@ const PosLayout = ({
         </div>
       ) : null}
 
+      {showRegisterDetails ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/45 p-0 backdrop-blur-sm sm:p-4"
+          onClick={() => setShowRegisterDetails(false)}
+        >
+          <section
+            className="flex h-[100dvh] w-full flex-col overflow-hidden border border-border bg-card text-card-foreground shadow-2xl sm:h-[92vh] sm:rounded-xl lg:w-[80vw]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border bg-surface-alt/40 px-5 py-4 sm:px-7">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  Register details
+                </p>
+                <h2 className="mt-1 text-base font-semibold tracking-tight text-foreground sm:text-lg">
+                  Cash register from {formatRegisterDate(registerOpenedAt)} -{" "}
+                  {formatRegisterDate()} by {user?.fullName ?? "Current user"}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+                  {activeRegister?.registerNumber
+                    ? `Register ${activeRegister.registerNumber}`
+                    : "Active register"}{" "}
+                  {businessLocationName ? `at ${businessLocationName}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRegisterDetails(false)}
+                className="rounded-lg p-2 text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close register details"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] overflow-hidden rounded-xl border border-border text-left text-sm text-muted-foreground">
+                  <thead className="bg-surface-alt/60">
+                    <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3 font-semibold">Payment Method</th>
+                      <th className="px-4 py-3 font-semibold">Sell</th>
+                      <th className="px-4 py-3 font-semibold">Expense</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["Cash in hand:", openingCashAmount, null],
+                      ["Cash Payment:", registerPaymentTotals.cash, registerTotalExpense],
+                      ["Cheque Payment:", 0, 0],
+                      ["Card Payment:", registerPaymentTotals.card, 0],
+                      ["Bank Transfer:", 0, 0],
+                      ["Advance payment:", 0, 0],
+                      ["MPESA:", registerPaymentTotals.mpesa, 0],
+                      ["Other Payments:", registerPaymentTotals.other, 0],
+                    ].map(([label, sell, expense]) => (
+                      <tr key={label as string} className="border-b border-border last:border-b-0">
+                        <td className="px-4 py-2.5 font-medium text-foreground">{label}</td>
+                        <td className="px-4 py-2.5">{formatCurrency(sell as number)}</td>
+                        <td className="px-4 py-2.5">
+                          {expense === null ? "--" : formatCurrency(expense as number)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-5">
+                <div className="grid overflow-hidden rounded-xl border border-border bg-surface text-sm sm:grid-cols-2">
+                  {[
+                    ["Total Sales:", registerTotalSales, "border-primary/40"],
+                    ["Total Refund", registerTotalRefund, "border-destructive/40"],
+                    ["Total Payment", registerTotalPayments, "border-success/40"],
+                    ["Credit Sales:", 0, "border-warning/40"],
+                    ["Net Sales:", registerTotalSales, "border-success/40"],
+                    ["Total Expense:", registerTotalExpense, "border-destructive/40"],
+                  ].map(([label, amount, rowClass]) => (
+                    <div
+                      key={label as string}
+                      className={`flex items-center justify-between gap-4 border-b border-l-4 border-border px-4 py-3 even:sm:border-l sm:[&:nth-last-child(-n+2)]:border-b-0 ${rowClass}`}
+                    >
+                      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                      <span className="text-sm font-semibold text-foreground">
+                        {formatCurrency(amount as number)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-7 border-t border-border pt-5">
+                <h3 className="text-base font-semibold text-foreground">
+                  Details of products sold
+                </h3>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[720px] rounded-xl border border-border text-left text-sm text-muted-foreground">
+                    <thead className="bg-surface-alt/60">
+                      <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-4 py-3 font-semibold">#</th>
+                        <th className="px-4 py-3 font-semibold">SKU</th>
+                        <th className="px-4 py-3 font-semibold">Product</th>
+                        <th className="px-4 py-3 font-semibold">Quantity</th>
+                        <th className="px-4 py-3 font-semibold">Total amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registerLineItems.length === 0 ? (
+                        <tr className="border-b border-border">
+                          <td className="px-4 py-5 text-center" colSpan={5}>
+                            No completed sales yet for this POS session.
+                          </td>
+                        </tr>
+                      ) : (
+                        registerLineItems.map((item, index) => (
+                          <tr key={item.product} className="border-b border-border">
+                            <td className="px-4 py-2.5">{index + 1}.</td>
+                            <td className="px-4 py-2.5">{item.sku}</td>
+                            <td className="px-4 py-2.5 font-medium text-foreground">{item.product}</td>
+                            <td className="px-4 py-2.5 font-semibold text-foreground">{item.quantity}</td>
+                            <td className="px-4 py-2.5">{formatCurrency(item.total)}</td>
+                          </tr>
+                        ))
+                      )}
+                      <tr className="bg-primary/10 font-semibold text-foreground">
+                        <td className="px-4 py-2.5">#</td>
+                        <td className="px-4 py-2.5" />
+                        <td className="px-4 py-2.5" />
+                        <td className="px-4 py-2.5">{registerTotalQuantity}</td>
+                        <td className="px-4 py-2.5">
+                          Grand Total: {formatCurrency(registerTotalSales)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-7 border-t border-border pt-5">
+                <h3 className="text-base font-semibold text-foreground">
+                  Details of products sold (By Brand)
+                </h3>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[620px] rounded-xl border border-border text-left text-sm text-muted-foreground">
+                    <thead className="bg-surface-alt/60">
+                      <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-4 py-3 font-semibold">#</th>
+                        <th className="px-4 py-3 font-semibold">Brands</th>
+                        <th className="px-4 py-3 font-semibold">Quantity</th>
+                        <th className="px-4 py-3 font-semibold">Total amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registerBrandRows.length === 0 ? (
+                        <tr className="border-b border-border">
+                          <td className="px-4 py-5 text-center" colSpan={4}>
+                            No brand sales to show yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        registerBrandRows.map((item, index) => (
+                          <tr key={item.brand} className="border-b border-border">
+                            <td className="px-4 py-2.5">{index + 1}.</td>
+                            <td className="px-4 py-2.5 font-medium text-foreground">{item.brand}</td>
+                            <td className="px-4 py-2.5 font-semibold text-foreground">{item.quantity}</td>
+                            <td className="px-4 py-2.5">{formatCurrency(item.total)}</td>
+                          </tr>
+                        ))
+                      )}
+                      <tr className="bg-primary/10 font-semibold text-foreground">
+                        <td className="px-4 py-2.5">#</td>
+                        <td className="px-4 py-2.5" />
+                        <td className="px-4 py-2.5">{registerTotalQuantity}</td>
+                        <td className="px-4 py-2.5">
+                          Grand Total: {formatCurrency(registerTotalSales)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-7 border-t border-border pt-5">
+                <h3 className="text-base font-semibold text-foreground">
+                  Types of service details
+                </h3>
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full min-w-[560px] rounded-xl border border-border text-left text-sm text-muted-foreground">
+                    <thead className="bg-surface-alt/60">
+                      <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-4 py-3 font-semibold">#</th>
+                        <th className="px-4 py-3 font-semibold">Types of service</th>
+                        <th className="px-4 py-3 font-semibold">Total amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b border-border">
+                        <td className="px-4 py-2.5">1</td>
+                        <td className="px-4 py-2.5">--</td>
+                        <td className="px-4 py-2.5">{formatCurrency(registerTotalSales)}</td>
+                      </tr>
+                      <tr className="bg-primary/10 font-semibold text-foreground">
+                        <td className="px-4 py-2.5">#</td>
+                        <td className="px-4 py-2.5" />
+                        <td className="px-4 py-2.5">
+                          Grand Total: {formatCurrency(registerTotalSales)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-7 rounded-xl border border-border bg-surface-alt/35 p-4 text-sm text-muted-foreground">
+                <p>
+                  <span className="font-semibold text-foreground">User:</span>{" "}
+                  {user?.fullName ?? "Current user"}
+                </p>
+                <p>
+                  <span className="font-semibold text-foreground">Email:</span>{" "}
+                  {user?.email ?? "--"}
+                </p>
+                <p>
+                  <span className="font-semibold text-foreground">
+                    Business Location:
+                  </span>{" "}
+                  {businessLocationName || "--"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border bg-surface-alt/40 px-5 py-4 sm:px-7">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <Printer className="h-4 w-4" />
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={() => toast.info("Close register will be wired to the backend next.")}
+                className="inline-flex items-center gap-2 rounded-lg bg-destructive px-4 py-2.5 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90"
+              >
+                <Lock className="h-4 w-4" />
+                Close Register
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowRegisterDetails(false)}
+                className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-foreground hover:bg-surface-alt"
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       {/* ===== PAYMENT MODAL ===== */}
       {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-2xl border border-border">
-            <div className="mb-6 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-foreground">
-                Process Payment
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-alt/40 px-5 py-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  Checkout
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-foreground">
+                  Complete & Print Receipt
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Confirm payment details before completing this sale.
+                </p>
+              </div>
               <button
+                type="button"
                 onClick={() => setShowPaymentModal(false)}
-                className="rounded-lg p-2 hover:bg-surface-alt"
+                className="rounded-lg p-2 text-muted-foreground hover:bg-surface-alt hover:text-foreground"
+                aria-label="Close payment modal"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5 p-5">
               <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Payment Method
                 </label>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid gap-2 sm:grid-cols-4">
                   {[
-                    { value: "card", label: "💳 Card" },
-                    { value: "cash", label: "💵 Cash" },
-                    { value: "mobile", label: "📱 Mobile" },
-                    { value: "gift", label: "🎁 Gift" },
-                  ].map((method) => (
-                    <button
-                      key={method.value}
-                      onClick={() => setPaymentMethod(method.value as any)}
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                        paymentMethod === method.value
-                          ? "border-2 border-primary bg-primary/10 text-primary"
-                          : "bg-surface-alt text-muted-foreground hover:bg-surface"
-                      }`}
-                    >
-                      {method.label}
-                    </button>
-                  ))}
+                    { value: "card", label: "Card", description: "Terminal", icon: CreditCard },
+                    { value: "cash", label: "Cash", description: "Drawer", icon: Banknote },
+                    { value: "mobile", label: "MPesa", description: "STK Push", icon: Coins, disabled: !mpesaStkPushEnabled },
+                    { value: "gift", label: "Gift", description: "Voucher", icon: Package },
+                  ].map((method) => {
+                    const Icon = method.icon;
+                    const active = paymentMethod === method.value;
+
+                    return (
+                      <button
+                        key={method.value}
+                        type="button"
+                        onClick={() => {
+                          if (method.disabled) {
+                            toast.info("MPesa STK Push is not configured for this location.");
+                            return;
+                          }
+                          setPaymentMethod(method.value as any);
+                        }}
+                        disabled={method.disabled}
+                        title={method.disabled ? "MPesa STK Push is not configured for this location." : undefined}
+                        className={`rounded-xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                          active
+                            ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/10"
+                            : "border-border bg-surface text-muted-foreground hover:border-primary/30 hover:bg-surface-alt hover:text-foreground"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                              active ? "bg-primary text-primary-foreground" : "bg-surface-alt"
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold">{method.label}</span>
+                            <span className="block text-[11px] text-muted-foreground">
+                              {method.description}
+                            </span>
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {paymentMethod === "cash" && (
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-foreground">
+                <div className="rounded-xl border border-border bg-surface p-4">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Cash Amount
                   </label>
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-surface-alt px-3 py-2.5">
-                    <Banknote className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <Banknote className="h-4 w-4 text-primary" />
                     <input
                       type="number"
                       placeholder="Enter cash amount..."
-                      className="w-full bg-transparent text-sm outline-none"
+                      className="w-full bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
                       value={cashAmount || ""}
                       onChange={(e) =>
                         setCashAmount(parseFloat(e.target.value) || 0)
@@ -1441,18 +1867,41 @@ const PosLayout = ({
                     />
                   </div>
                   {cashAmount && cashAmount > 0 && (
-                    <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <div className="mt-3 flex items-center justify-between rounded-lg bg-success/10 px-3 py-2 text-sm">
+                      <span className="flex items-center gap-1.5 text-success">
                       <Coins className="h-3.5 w-3.5" />
-                      Change: {formatCurrency(Math.max(cashAmount - cartTotal, 0))}
+                        Change due
+                      </span>
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(Math.max(cashAmount - cartTotal, 0))}
+                      </span>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="space-y-2 rounded-xl bg-surface-alt p-4 text-sm">
-                <div className="flex justify-between">
+              <div className="overflow-hidden rounded-xl border border-border bg-surface text-sm">
+                <div className="flex justify-between border-b border-border px-4 py-3">
+                  <span className="text-muted-foreground">Items</span>
+                  <span className="font-semibold text-foreground">
+                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-border px-4 py-3">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(cartSubtotal)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-border px-4 py-3">
+                  <span className="text-muted-foreground">Tax</span>
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(effectiveTax)}
+                  </span>
+                </div>
+                <div className="flex justify-between bg-primary/10 px-4 py-3">
                   <span className="text-muted-foreground">Total Amount</span>
-                  <span className="font-bold text-foreground">
+                  <span className="text-base font-semibold text-primary">
                     {formatCurrency(cartTotal)}
                   </span>
                 </div>
@@ -1460,19 +1909,21 @@ const PosLayout = ({
 
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowPaymentModal(false)}
-                  className="rounded-lg border border-border px-4 py-3 font-medium hover:bg-surface-alt"
+                  className="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-surface-alt"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={handlePaymentComplete}
                   disabled={
                     isLoading ||
                     (paymentMethod === "cash" &&
                       (!cashAmount || cashAmount < cartTotal))
                   }
-                  className="rounded-lg bg-primary px-4 py-3 font-medium text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -1480,7 +1931,7 @@ const PosLayout = ({
                       Processing...
                     </span>
                   ) : (
-                    "Pay Now"
+                    "Complete Sale"
                   )}
                 </button>
               </div>
@@ -1491,62 +1942,79 @@ const PosLayout = ({
 
       {/* ===== RECEIPT MODAL ===== */}
       {showReceipt && currentOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl">
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/15">
-                <Check className="h-8 w-8 text-success" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl">
+            <div className="border-b border-border bg-surface-alt/40 px-6 py-5 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-success/10 text-success">
+                <Check className="h-6 w-6" />
               </div>
-              <h3 className="text-xl font-bold text-foreground">
-                Payment Successful!
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-success">
+                Payment successful
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-foreground">
+                Receipt is ready
               </h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 Order #{currentOrder.id} completed
               </p>
             </div>
 
-            <div className="mt-6 space-y-2 rounded-xl bg-surface-alt p-4 text-sm">
-              <div className="flex justify-between">
+            <div className="p-6">
+            <div className="overflow-hidden rounded-xl border border-border bg-surface text-sm">
+              <div className="flex justify-between border-b border-border px-4 py-3">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCurrency(currentOrder.subtotal)}</span>
+                <span className="font-medium text-foreground">
+                  {formatCurrency(currentOrder.subtotal)}
+                </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between border-b border-border px-4 py-3">
                 <span className="text-muted-foreground">Tax</span>
-                <span>{formatCurrency(currentOrder.tax)}</span>
+                <span className="font-medium text-foreground">
+                  {formatCurrency(currentOrder.tax)}
+                </span>
               </div>
-              <div className="flex justify-between border-t border-border pt-2 font-bold">
+              <div className="flex justify-between border-b border-border px-4 py-3">
+                <span className="text-muted-foreground">Discount</span>
+                <span className="font-medium text-destructive">
+                  -{formatCurrency(currentOrder.discount)}
+                </span>
+              </div>
+              <div className="flex justify-between bg-primary/10 px-4 py-3">
                 <span className="text-foreground">Total</span>
-                <span className="text-primary">
+                <span className="text-base font-semibold text-primary">
                   {formatCurrency(currentOrder.total)}
                 </span>
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
+              <div className="flex justify-between px-4 py-3 text-xs text-muted-foreground">
                 <span>Payment: {currentOrder.payment_method.toUpperCase()}</span>
                 <span>Status: {currentOrder.payment_status}</span>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-3">
               <button
+                type="button"
                 onClick={() => {
                   setShowReceipt(false);
                   setCurrentOrder(null);
                 }}
-                className="rounded-lg border border-border px-4 py-3 font-medium hover:bg-surface-alt"
+                className="rounded-xl border border-border px-4 py-3 text-sm font-semibold text-foreground hover:bg-surface-alt"
               >
                 Close
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setShowReceipt(false);
                   setCurrentOrder(null);
                   window.print();
                 }}
-                className="flex items-center justify-center gap-2 rounded-lg bg-surface-alt px-4 py-3 font-medium hover:bg-surface"
+                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
               >
                 <Printer className="h-4 w-4" />
                 Print Receipt
               </button>
+            </div>
             </div>
           </div>
         </div>
