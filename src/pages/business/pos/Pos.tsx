@@ -61,6 +61,9 @@ function mapCustomerForPos(customer: BusinessCustomerRecord): PosCustomer {
     tier: "bronze",
     total_orders: 0,
     total_spent: Number(customer.totalSaleDue || 0),
+    credit_limit: Number(customer.creditLimit || 0),
+    total_sale_due: Number(customer.totalSaleDue || 0),
+    advance_balance: Number(customer.advanceBalance || 0),
   };
 }
 
@@ -100,6 +103,7 @@ export default function Pos() {
     error: readinessError,
     loadReadiness,
     openRegister,
+    completeSale,
   } = usePosReadiness();
   const [openingCashAmount, setOpeningCashAmount] = useState("");
   const [openingNote, setOpeningNote] = useState("");
@@ -343,8 +347,11 @@ export default function Pos() {
       productsLoading={productsLoading}
       productsError={productsError}
       mpesaStkPushEnabled={readiness.mpesaStkPushEnabled}
+      paymentMethods={readiness.paymentMethodDetails}
       activeRegister={readiness.activeRegister}
       businessLocationName={readiness.businessLocationName}
+      businessLocationId={readiness.businessLocationId}
+      onCompleteSale={completeSale}
     />
   );
 }

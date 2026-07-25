@@ -54,7 +54,9 @@ import EditSaleOrder from './pages/business/sales/EditSaleOrder'
 import SaleOrderLoadingSheet from './pages/business/sales/SaleOrderLoadingSheet'
 import SalesList from './pages/business/sales/SalesList'
 import SalesDetails from './pages/business/sales/SalesDetails'
-import Pos from './pages/business/pos/Pos'
+import Pos from './pages/business/pos/Pos' 
+import TransfersList from './pages/business/transfers/TransfersList'
+import CreateTransferList from './pages/business/transfers/CreateTransferList'
 
 function App() {
   return (
@@ -148,6 +150,10 @@ function App() {
           <Route path="/sales/order/:id/loading-sheet" element={<SaleOrderLoadingSheet />} />
           <Route path="/sales/list" element={<SalesList />} />
           <Route path="/sales/list/:id/view" element={<SalesDetails />} />
+
+          {/* STOCK TRANSFERS */}
+          <Route path="/transfers/list" element={<TransfersList />} />
+          <Route path="/transfers/list/create" element={<CreateTransferList />} />
 
 
         </Route>

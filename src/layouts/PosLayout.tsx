@@ -45,6 +45,8 @@ import {
   Monitor,
   Sun,
   Moon,
+  Smartphone,
+  Gift,
 } from "lucide-react";
 import { useAuthStore } from "../auth/authStore";
 import { useBusinessCurrency } from "@/business/businessStore";
@@ -116,7 +118,32 @@ export interface PosCustomer {
   tier: "bronze" | "silver" | "gold" | "platinum";
   total_orders: number;
   total_spent: number;
+  credit_limit: number;
+  total_sale_due: number;
+  advance_balance: number;
 }
+
+type PosPaymentMethod = string;
+
+export type PosPaymentMethodDefinition = {
+  id: string;
+  code: string;
+  name: string;
+  alias: string;
+  description: string;
+  isEnabled: boolean;
+  isCredit: boolean;
+  requiresReference: boolean;
+  requiresPhone: boolean;
+  sortOrder: number;
+};
+
+type PaymentLine = {
+  id: string;
+  method: PosPaymentMethod;
+  amount: number;
+  phone?: string;
+};
 
 interface Order {
   id: string;
@@ -126,7 +153,9 @@ interface Order {
   discount: number;
   total: number;
   payment_method: string;
-  payment_status: "paid" | "unpaid" | "refunded";
+  payment_status: "paid" | "partially_paid" | "unpaid" | "refunded";
+  payments: PaymentLine[];
+  credit_amount: number;
   customer?: PosCustomer;
   created_at: string;
   status: "pending" | "completed" | "cancelled";
@@ -165,6 +194,7 @@ type PosLayoutProps = {
   productsLoading?: boolean;
   productsError?: string | null;
   mpesaStkPushEnabled?: boolean;
+  paymentMethods?: PosPaymentMethodDefinition[];
   activeRegister?: {
     id: string;
     registerNumber?: string;
@@ -173,6 +203,42 @@ type PosLayoutProps = {
     expectedClosingCashAmount?: number;
   } | null;
   businessLocationName?: string;
+  businessLocationId?: string;
+  onCompleteSale?: (payload: {
+    locationId: string;
+    customerId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    customerEmail?: string;
+    saleDate: string;
+    notes?: string;
+    subtotal: number;
+    totalDiscount: number;
+    totalTax: number;
+    grandTotal: number;
+    itemsCount: number;
+    totalQuantity: number;
+    items: Array<{
+      productId: string;
+      quantity: number;
+      unitCost: number;
+      discountPercentage: number;
+      discountAmount: number;
+      taxRate: number;
+      taxAmount: number;
+      unitPrice: number;
+      lineTotal: number;
+      batchTrackingEnabled: boolean;
+      sortOrder: number;
+    }>;
+    payments: Array<{
+      paymentMethodCode: string;
+      amount: number;
+      referenceNumber?: string;
+      phone?: string;
+      notes?: string;
+    }>;
+  }) => Promise<unknown>;
 };
 
 // ============================================
@@ -200,8 +266,11 @@ const PosLayout = ({
   productsLoading = false,
   productsError = null,
   mpesaStkPushEnabled = false,
+  paymentMethods = [],
   activeRegister = null,
   businessLocationName = "",
+  businessLocationId = "",
+  onCompleteSale,
 }: PosLayoutProps) => {
   const navigate = useNavigate();
   const logout = useAuthStore((state) => state.logout);
@@ -224,10 +293,11 @@ const PosLayout = ({
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<
-    "cash" | "card" | "mobile" | "gift"
-  >("card");
+  const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod>("card");
   const [cashAmount, setCashAmount] = useState<number | null>(null);
+  const [mpesaPhone, setMpesaPhone] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
   const [orderNotes, setOrderNotes] = useState("");
   const [discountAmount, setDiscountAmount] = useState(0);
   const [taxOverride, setTaxOverride] = useState<number | null>(null);
@@ -245,11 +315,60 @@ const PosLayout = ({
   const cartRef = useRef<HTMLDivElement>(null);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
+  const enabledPaymentMethods = useMemo<PosPaymentMethodDefinition[]>(() => {
+    const source =
+      paymentMethods.length > 0
+        ? paymentMethods
+        : [
+            {
+              id: "cash",
+              code: "cash",
+              name: "Cash Payment",
+              alias: "Cash",
+              description: "Cash received at the register.",
+              isEnabled: true,
+              isCredit: false,
+              requiresReference: false,
+              requiresPhone: false,
+              sortOrder: 10,
+            },
+            {
+              id: "card",
+              code: "card",
+              name: "Card Payment",
+              alias: "Card",
+              description: "Card or terminal payment.",
+              isEnabled: true,
+              isCredit: false,
+              requiresReference: true,
+              requiresPhone: false,
+              sortOrder: 30,
+            },
+          ];
+
+    return source
+      .filter((method) => method.isEnabled)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+  }, [paymentMethods]);
+
+  const selectedPaymentMethod = enabledPaymentMethods.find(
+    (method) => method.code === paymentMethod,
+  );
+
   useEffect(() => {
-    if (!mpesaStkPushEnabled && paymentMethod === "mobile") {
-      setPaymentMethod("cash");
+    if (!mpesaStkPushEnabled && paymentMethod === "mpesa") {
+      setPaymentMethod(enabledPaymentMethods[0]?.code ?? "cash");
     }
-  }, [mpesaStkPushEnabled, paymentMethod]);
+  }, [enabledPaymentMethods, mpesaStkPushEnabled, paymentMethod]);
+
+  useEffect(() => {
+    if (enabledPaymentMethods.length === 0) {
+      return;
+    }
+    if (!enabledPaymentMethods.some((method) => method.code === paymentMethod)) {
+      setPaymentMethod(enabledPaymentMethods[0].code);
+    }
+  }, [enabledPaymentMethods, paymentMethod]);
 
   const cartSubtotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.total, 0),
@@ -276,6 +395,28 @@ const PosLayout = ({
         cartSubtotal + effectiveTax + shippingCharge + packingCharge - cartDiscount,
       ),
     [cartSubtotal, cartDiscount, effectiveTax, shippingCharge, packingCharge],
+  );
+  const paidAmount = useMemo(
+    () =>
+      paymentLines
+        .filter((line) => line.method !== "credit")
+        .reduce((sum, line) => sum + line.amount, 0),
+    [paymentLines],
+  );
+  const creditAmount = useMemo(
+    () =>
+      paymentLines
+        .filter((line) => line.method === "credit")
+        .reduce((sum, line) => sum + line.amount, 0),
+    [paymentLines],
+  );
+  const coveredAmount = paidAmount + creditAmount;
+  const remainingPaymentAmount = Math.max(0, cartTotal - coveredAmount);
+  const selectedCustomerCreditLimit = selectedCustomer?.credit_limit ?? 0;
+  const selectedCustomerSaleDue = selectedCustomer?.total_sale_due ?? 0;
+  const selectedCustomerAvailableCredit = Math.max(
+    0,
+    selectedCustomerCreditLimit - selectedCustomerSaleDue,
   );
 
   const filteredCustomers = useMemo(() => {
@@ -506,6 +647,9 @@ const PosLayout = ({
     setShippingCharge(0);
     setPackingCharge(0);
     setCashAmount(null);
+    setPaymentAmount("");
+    setPaymentLines([]);
+    setMpesaPhone("");
     setShowPaymentModal(false);
     setShowClearCartModal(false);
   };
@@ -525,10 +669,74 @@ const PosLayout = ({
       toast.error("Cart is empty. Add items before processing payment.");
       return;
     }
+    setPaymentAmount(cartTotal.toFixed(2));
     setShowPaymentModal(true);
   };
 
-  const handlePaymentComplete = () => {
+  const handleAddPaymentLine = () => {
+    const amount = Number.parseFloat(paymentAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      toast.error("Enter a valid payment amount.");
+      return;
+    }
+    if (amount > remainingPaymentAmount) {
+      toast.error("Payment amount cannot exceed the remaining balance.");
+      return;
+    }
+    if (!selectedPaymentMethod) {
+      toast.error("Select a valid payment method.");
+      return;
+    }
+    if (selectedPaymentMethod.isCredit) {
+      if (!selectedCustomer) {
+        toast.error("Select a customer before selling on credit.");
+        return;
+      }
+      if (amount > selectedCustomerAvailableCredit - creditAmount) {
+        toast.error("Credit amount exceeds this customer's available credit.");
+        return;
+      }
+    }
+    if (selectedPaymentMethod.requiresPhone && mpesaPhone.trim().length < 9) {
+      toast.error(`Enter the ${selectedPaymentMethod.name} phone number.`);
+      return;
+    }
+
+    setPaymentLines((lines) => [
+      ...lines,
+      {
+        id: `payment_${Date.now()}`,
+        method: paymentMethod,
+        amount,
+        phone: selectedPaymentMethod.requiresPhone ? mpesaPhone.trim() : undefined,
+      },
+    ]);
+    setCashAmount(null);
+    setPaymentAmount(Math.max(0, remainingPaymentAmount - amount).toFixed(2));
+  };
+
+  const handleRemovePaymentLine = (lineId: string) => {
+    setPaymentLines((lines) => lines.filter((line) => line.id !== lineId));
+  };
+
+  const handlePaymentComplete = async () => {
+    if (cart.length === 0) {
+      toast.error("Cart is empty. Add items before completing payment.");
+      return;
+    }
+    if (coveredAmount < cartTotal) {
+      toast.error("Add payment lines or credit to cover the order total.");
+      return;
+    }
+    if (creditAmount > 0 && !selectedCustomer) {
+      toast.error("Select a customer before selling on credit.");
+      return;
+    }
+    if (creditAmount > selectedCustomerAvailableCredit) {
+      toast.error("Credit amount exceeds this customer's available credit.");
+      return;
+    }
+
     setIsLoading(true);
     const order: Order = {
       id: `ORD-${Date.now()}`,
@@ -537,24 +745,71 @@ const PosLayout = ({
       tax: effectiveTax,
       discount: cartDiscount,
       total: cartTotal,
-      payment_method: paymentMethod,
-      payment_status: "paid",
+      payment_method: paymentLines.length > 1 ? "split" : paymentLines[0]?.method ?? paymentMethod,
+      payment_status: creditAmount > 0 && paidAmount === 0 ? "unpaid" : creditAmount > 0 ? "partially_paid" : "paid",
+      payments: paymentLines,
+      credit_amount: creditAmount,
       customer: selectedCustomer || undefined,
       created_at: new Date().toISOString(),
       status: "completed",
       notes: orderNotes || undefined,
     };
-    setCurrentOrder(order);
-    setCompletedOrders((orders) => [order, ...orders]);
+    try {
+      if (onCompleteSale) {
+        await onCompleteSale({
+          locationId: businessLocationId,
+          customerId: selectedCustomer?.id,
+          customerName: selectedCustomer?.name,
+          customerPhone: selectedCustomer?.phone,
+          customerEmail: selectedCustomer?.email,
+          saleDate: order.created_at,
+          notes: orderNotes || undefined,
+          subtotal: cartSubtotal,
+          totalDiscount: cartDiscount,
+          totalTax: effectiveTax,
+          grandTotal: cartTotal,
+          itemsCount: cart.length,
+          totalQuantity: cart.reduce((sum, item) => sum + item.quantity, 0),
+          items: cart.map((item, index) => {
+            const product = products.find((candidate) => candidate.id === item.product_id);
+            return {
+              productId: item.product_id,
+              quantity: item.quantity,
+              unitCost: product?.cost ?? 0,
+              discountPercentage: 0,
+              discountAmount: 0,
+              taxRate: item.tax_rate,
+              taxAmount: item.total * item.tax_rate,
+              unitPrice: item.price,
+              lineTotal: item.total,
+              batchTrackingEnabled: false,
+              sortOrder: index,
+            };
+          }),
+          payments: paymentLines.map((line) => ({
+            paymentMethodCode: line.method,
+            amount: line.amount,
+            phone: line.phone,
+          })),
+        });
+      }
 
-    setTimeout(() => {
+      setCurrentOrder(order);
+      setCompletedOrders((orders) => [order, ...orders]);
       setIsLoading(false);
       setShowPaymentModal(false);
       setShowReceipt(true);
       setCart([]);
       setOrderNotes("");
       setSelectedCustomer(null);
-    }, 1200);
+      setPaymentLines([]);
+      setPaymentAmount("");
+      setCashAmount(null);
+      setMpesaPhone("");
+    } catch (err) {
+      setIsLoading(false);
+      toast.error(err instanceof Error ? err.message : "Unable to complete sale.");
+    }
   };
 
   const handleServeNext = () => {
@@ -586,8 +841,19 @@ const PosLayout = ({
   };
 
   const handleSelectCustomer = (customer: PosCustomer) => {
+    if (selectedCustomer?.id !== customer.id) {
+      setPaymentLines((lines) => lines.filter((line) => line.method !== "credit"));
+      if (paymentMethod === "credit") {
+        setPaymentMethod("cash");
+      }
+    }
     setSelectedCustomer(customer);
     setShowCustomerSearch(false);
+    setCustomerSearchQuery("");
+  };
+
+  const handleOpenCheckoutCustomerSearch = () => {
+    setShowCustomerSearch(true);
     setCustomerSearchQuery("");
   };
 
@@ -635,6 +901,18 @@ const PosLayout = ({
     waiting: queueItems.filter((i) => i.status === "waiting").length,
     serving: queueItems.filter((i) => i.status === "serving").length,
     completed: queueItems.filter((i) => i.status === "completed").length,
+  };
+
+  const paymentMethodIcons: Record<string, ComponentType<{ className?: string }>> = {
+    cash: Banknote,
+    cheque: CreditCard,
+    card: CreditCard,
+    bank_transfer: Banknote,
+    advance: Coins,
+    mpesa: Smartphone,
+    other: Package,
+    gift: Gift,
+    credit: Gift,
   };
 
   
@@ -695,21 +973,45 @@ const PosLayout = ({
   const registerPaymentTotals = useMemo(() => {
     return completedOrders.reduce(
       (totals, order) => {
-        if (order.payment_status !== "paid") {
+        if (order.payment_status === "refunded") {
           return totals;
         }
+
+        if (order.payments.length > 0) {
+          for (const line of order.payments) {
+            if (line.method === "credit") {
+              continue;
+            }
+            const key =
+              line.method === "mobile"
+                ? "mpesa"
+                : line.method === "gift"
+                  ? "other"
+                  : line.method;
+            if (key in totals) {
+              totals[key as keyof typeof totals] += line.amount;
+            }
+          }
+          return totals;
+        }
+
         const key =
           order.payment_method === "mobile"
             ? "mpesa"
             : order.payment_method === "gift"
               ? "other"
               : order.payment_method;
-        totals[key as keyof typeof totals] += order.total;
+        if (key in totals) {
+          totals[key as keyof typeof totals] += order.total;
+        }
         return totals;
       },
       {
         cash: 0,
+        cheque: 0,
         card: 0,
+        bank_transfer: 0,
+        advance: 0,
         mpesa: 0,
         other: 0,
       },
@@ -717,7 +1019,7 @@ const PosLayout = ({
   }, [completedOrders]);
   const openingCashAmount = Number(activeRegister?.openingCashAmount ?? 0);
   const registerTotalSales = completedOrders.reduce(
-    (sum, order) => sum + (order.payment_status === "paid" ? order.total : 0),
+    (sum, order) => sum + (order.payment_status !== "refunded" ? order.total : 0),
     0,
   );
   const registerTotalRefund = completedOrders.reduce(
@@ -732,7 +1034,10 @@ const PosLayout = ({
   const registerTotalPayments =
     openingCashAmount +
     registerPaymentTotals.cash +
+    registerPaymentTotals.cheque +
     registerPaymentTotals.card +
+    registerPaymentTotals.bank_transfer +
+    registerPaymentTotals.advance +
     registerPaymentTotals.mpesa +
     registerPaymentTotals.other;
 
@@ -1315,7 +1620,7 @@ const PosLayout = ({
 
       {showCustomerSearch ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/50 p-4 backdrop-blur-sm"
           onClick={() => setShowCustomerSearch(false)}
         >
           <div
@@ -1556,10 +1861,10 @@ const PosLayout = ({
                     {[
                       ["Cash in hand:", openingCashAmount, null],
                       ["Cash Payment:", registerPaymentTotals.cash, registerTotalExpense],
-                      ["Cheque Payment:", 0, 0],
+                      ["Cheque Payment:", registerPaymentTotals.cheque, 0],
                       ["Card Payment:", registerPaymentTotals.card, 0],
-                      ["Bank Transfer:", 0, 0],
-                      ["Advance payment:", 0, 0],
+                      ["Bank Transfer:", registerPaymentTotals.bank_transfer, 0],
+                      ["Advance payment:", registerPaymentTotals.advance, 0],
                       ["MPESA:", registerPaymentTotals.mpesa, 0],
                       ["Other Payments:", registerPaymentTotals.other, 0],
                     ].map(([label, sell, expense]) => (
@@ -1770,8 +2075,8 @@ const PosLayout = ({
       {/* ===== PAYMENT MODAL ===== */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-border bg-surface-alt/40 px-5 py-4">
+          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-sm border border-border bg-card text-card-foreground shadow-2xl">
+            <div className="shrink-0 flex items-start justify-between gap-4 border-b border-border bg-surface-alt/40 px-5 py-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
                   Checkout
@@ -1793,34 +2098,87 @@ const PosLayout = ({
               </button>
             </div>
 
-            <div className="space-y-5 p-5">
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+              <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold text-white ${
+                        selectedCustomer ? getTierColor(selectedCustomer.tier) : "bg-muted"
+                      }`}
+                    >
+                      {selectedCustomer ? selectedCustomer.name.charAt(0) : "W"}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Customer
+                      </p>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {selectedCustomer?.name ?? "Walk in customer"}
+                      </p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {selectedCustomer
+                          ? selectedCustomer.email || selectedCustomer.phone || "Customer selected"
+                          : "No customer selected"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenCheckoutCustomerSearch}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-surface-alt"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    {selectedCustomer ? "Change Customer" : "Search Customer"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Total amount to be paid
+                </p>
+                <p className="mt-1 text-2xl font-semibold text-primary">
+                  {formatCurrency(cartTotal)}
+                </p>
+              </div>
+
               <div>
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Payment Method
                 </label>
-                <div className="grid gap-2 sm:grid-cols-4">
-                  {[
-                    { value: "card", label: "Card", description: "Terminal", icon: CreditCard },
-                    { value: "cash", label: "Cash", description: "Drawer", icon: Banknote },
-                    { value: "mobile", label: "MPesa", description: "STK Push", icon: Coins, disabled: !mpesaStkPushEnabled },
-                    { value: "gift", label: "Gift", description: "Voucher", icon: Package },
-                  ].map((method) => {
-                    const Icon = method.icon;
-                    const active = paymentMethod === method.value;
+                <div className="grid gap-2 sm:grid-cols-5">
+                  {enabledPaymentMethods.map((method) => {
+                    const Icon = paymentMethodIcons[method.code] ?? Package;
+                    const active = paymentMethod === method.code;
+                    const disabled =
+                      (method.code === "mpesa" && !mpesaStkPushEnabled) ||
+                      (method.isCredit && (!selectedCustomer || selectedCustomerAvailableCredit <= creditAmount));
 
                     return (
                       <button
-                        key={method.value}
+                        key={method.code}
                         type="button"
                         onClick={() => {
-                          if (method.disabled) {
-                            toast.info("MPesa STK Push is not configured for this location.");
+                          if (disabled) {
+                            toast.info(
+                              method.isCredit
+                                ? "Select a customer with available credit first."
+                                : `${method.name} is not configured for this location.`,
+                            );
                             return;
                           }
-                          setPaymentMethod(method.value as any);
+                          setPaymentMethod(method.code);
+                          setPaymentAmount(remainingPaymentAmount.toFixed(2));
                         }}
-                        disabled={method.disabled}
-                        title={method.disabled ? "MPesa STK Push is not configured for this location." : undefined}
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? method.isCredit
+                              ? "Select a customer with available credit first."
+                              : `${method.name} is not configured for this location.`
+                            : undefined
+                        }
                         className={`rounded-xl border p-3 text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
                           active
                             ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/10"
@@ -1836,9 +2194,11 @@ const PosLayout = ({
                             <Icon className="h-4 w-4" />
                           </span>
                           <span className="min-w-0">
-                            <span className="block text-sm font-semibold">{method.label}</span>
+                            <span className="block text-sm font-semibold">
+                              {method.alias || method.name}
+                            </span>
                             <span className="block text-[11px] text-muted-foreground">
-                              {method.description}
+                              {method.isCredit && !selectedCustomer ? "Select customer" : method.description}
                             </span>
                           </span>
                         </span>
@@ -1848,10 +2208,35 @@ const PosLayout = ({
                 </div>
               </div>
 
+              <div className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Amount to add
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paymentAmount}
+                    onChange={(event) => setPaymentAmount(event.target.value)}
+                    className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground outline-none focus:border-primary"
+                    placeholder="0.00"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddPaymentLine}
+                  disabled={remainingPaymentAmount <= 0}
+                  className="self-end rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Add Payment
+                </button>
+              </div>
+
               {paymentMethod === "cash" && (
                 <div className="rounded-xl border border-border bg-surface p-4">
                   <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Cash Amount
+                    Cash Received
                   </label>
                   <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
                     <Banknote className="h-4 w-4 text-primary" />
@@ -1860,54 +2245,104 @@ const PosLayout = ({
                       placeholder="Enter cash amount..."
                       className="w-full bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
                       value={cashAmount || ""}
-                      onChange={(e) =>
-                        setCashAmount(parseFloat(e.target.value) || 0)
-                      }
-                      min={cartTotal}
+                      onChange={(e) => {
+                        const received = parseFloat(e.target.value) || 0;
+                        setCashAmount(received);
+                        setPaymentAmount(Math.min(received, remainingPaymentAmount).toFixed(2));
+                      }}
+                      min={0}
                     />
                   </div>
-                  {cashAmount && cashAmount > 0 && (
+                  {(cashAmount ?? 0) > 0 && (
                     <div className="mt-3 flex items-center justify-between rounded-lg bg-success/10 px-3 py-2 text-sm">
                       <span className="flex items-center gap-1.5 text-success">
-                      <Coins className="h-3.5 w-3.5" />
+                        <Coins className="h-3.5 w-3.5" />
                         Change due
                       </span>
                       <span className="font-semibold text-foreground">
-                        {formatCurrency(Math.max(cashAmount - cartTotal, 0))}
+                        {formatCurrency(Math.max((cashAmount ?? 0) - remainingPaymentAmount, 0))}
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              <div className="overflow-hidden rounded-xl border border-border bg-surface text-sm">
-                <div className="flex justify-between border-b border-border px-4 py-3">
-                  <span className="text-muted-foreground">Items</span>
-                  <span className="font-semibold text-foreground">
-                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
-                  </span>
+              {selectedPaymentMethod?.requiresPhone ? (
+                <div className="rounded-xl border border-border bg-surface p-4">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {selectedPaymentMethod.name} Phone Number
+                  </label>
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <Smartphone className="h-4 w-4 text-primary" />
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      placeholder="07XX XXX XXX"
+                      className="w-full bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+                      value={mpesaPhone}
+                      onChange={(event) => setMpesaPhone(event.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="flex justify-between border-b border-border px-4 py-3">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(cartSubtotal)}
-                  </span>
+              ) : null}
+
+              {paymentMethod === "credit" && selectedCustomer ? (
+                <div className="rounded-xl border border-warning/20 bg-warning/10 p-4 text-sm">
+                  <p className="font-semibold text-foreground">
+                    Selling on credit for {selectedCustomer.name}
+                  </p>
+                  <p className="mt-1 text-muted-foreground">
+                    Available credit after existing due balance:{" "}
+                    <span className="font-semibold text-foreground">
+                      {formatCurrency(Math.max(0, selectedCustomerAvailableCredit - creditAmount))}
+                    </span>
+                  </p>
                 </div>
-                <div className="flex justify-between border-b border-border px-4 py-3">
-                  <span className="text-muted-foreground">Tax</span>
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(effectiveTax)}
-                  </span>
+              ) : null}
+
+              <div className="overflow-hidden  border border-border bg-surface text-sm">
+                <div className="border-b border-border bg-surface-alt/50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Payment lines
                 </div>
-                <div className="flex justify-between bg-primary/10 px-4 py-3">
-                  <span className="text-muted-foreground">Total Amount</span>
-                  <span className="text-base font-semibold text-primary">
-                    {formatCurrency(cartTotal)}
-                  </span>
-                </div>
+                {paymentLines.length === 0 ? (
+                  <div className="px-4 py-5 text-center text-sm text-muted-foreground">
+                    No payment added yet.
+                  </div>
+                ) : (
+                  paymentLines.map((line) => (
+                    <div
+                      key={line.id}
+                      className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold capitalize text-foreground">
+                          {line.method === "mobile" ? "MPesa" : line.method}
+                        </p>
+                        {line.phone ? (
+                          <p className="text-xs text-muted-foreground">{line.phone}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-foreground">
+                          {formatCurrency(line.amount)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePaymentLine(line.id)}
+                          className="text-muted-foreground hover:text-destructive"
+                          title="Remove payment"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
+            </div>
+
+            <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-border bg-surface-alt/40 px-5 py-4">
                 <button
                   type="button"
                   onClick={() => setShowPaymentModal(false)}
@@ -1920,8 +2355,8 @@ const PosLayout = ({
                   onClick={handlePaymentComplete}
                   disabled={
                     isLoading ||
-                    (paymentMethod === "cash" &&
-                      (!cashAmount || cashAmount < cartTotal))
+                    remainingPaymentAmount > 0 ||
+                    (creditAmount > 0 && !selectedCustomer)
                   }
                   className="rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -1934,12 +2369,11 @@ const PosLayout = ({
                     "Complete Sale"
                   )}
                 </button>
-              </div>
             </div>
           </div>
         </div>
       )}
-
+      
       {/* ===== RECEIPT MODAL ===== */}
       {showReceipt && currentOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/45 p-4 backdrop-blur-sm">

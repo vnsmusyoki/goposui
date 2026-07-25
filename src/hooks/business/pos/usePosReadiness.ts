@@ -17,6 +17,18 @@ export type PosReadiness = {
   mpesaConfigured: boolean;
   mpesaStkPushEnabled: boolean;
   paymentMethods: string[];
+  paymentMethodDetails: Array<{
+    id: string;
+    code: string;
+    name: string;
+    alias: string;
+    description: string;
+    isEnabled: boolean;
+    isCredit: boolean;
+    requiresReference: boolean;
+    requiresPhone: boolean;
+    sortOrder: number;
+  }>;
   blockingReasons: string[];
   warnings: string[];
   message?: string;
@@ -24,6 +36,48 @@ export type PosReadiness = {
 
 type OpenRegisterResponse = {
   register: PosReadiness['activeRegister'];
+  message?: string;
+};
+
+export type CompletePosSalePayload = {
+  locationId: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  saleDate: string;
+  notes?: string;
+  subtotal: number;
+  totalDiscount: number;
+  totalTax: number;
+  grandTotal: number;
+  itemsCount: number;
+  totalQuantity: number;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    unitCost: number;
+    discountPercentage: number;
+    discountAmount: number;
+    taxRate: number;
+    taxAmount: number;
+    unitPrice: number;
+    lineTotal: number;
+    batchTrackingEnabled: boolean;
+    sortOrder: number;
+  }>;
+  payments: Array<{
+    paymentMethodCode: string;
+    amount: number;
+    referenceNumber?: string;
+    phone?: string;
+    notes?: string;
+  }>;
+};
+
+type CompletePosSaleResponse = {
+  sale: unknown;
+  payments: unknown[];
   message?: string;
 };
 
@@ -70,11 +124,53 @@ export function usePosReadiness() {
     return response;
   }, [loadReadiness]);
 
+  const completeSale = useCallback(async (payload: CompletePosSalePayload) => {
+    return apiRequest<CompletePosSaleResponse>('/pos/sales', {
+      method: 'POST',
+      body: JSON.stringify({
+        location_id: payload.locationId,
+        customer_id: payload.customerId ?? '',
+        customer_name: payload.customerName ?? '',
+        customer_phone: payload.customerPhone ?? '',
+        customer_email: payload.customerEmail ?? '',
+        sale_date: payload.saleDate,
+        notes: payload.notes ?? '',
+        subtotal: payload.subtotal,
+        total_discount: payload.totalDiscount,
+        total_tax: payload.totalTax,
+        grand_total: payload.grandTotal,
+        items_count: payload.itemsCount,
+        total_quantity: payload.totalQuantity,
+        items: payload.items.map((item) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+          unit_cost: item.unitCost,
+          discount_percentage: item.discountPercentage,
+          discount_amount: item.discountAmount,
+          tax_rate: item.taxRate,
+          tax_amount: item.taxAmount,
+          unit_price: item.unitPrice,
+          line_total: item.lineTotal,
+          batch_tracking_enabled: item.batchTrackingEnabled,
+          sort_order: item.sortOrder,
+        })),
+        payments: payload.payments.map((payment) => ({
+          payment_method_code: payment.paymentMethodCode,
+          amount: payment.amount,
+          reference_number: payment.referenceNumber ?? '',
+          phone: payment.phone ?? '',
+          notes: payment.notes ?? '',
+        })),
+      }),
+    });
+  }, []);
+
   return {
     readiness,
     isLoading,
     error,
     loadReadiness,
     openRegister,
+    completeSale,
   };
 }
