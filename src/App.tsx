@@ -57,6 +57,8 @@ import SalesDetails from './pages/business/sales/SalesDetails'
 import Pos from './pages/business/pos/Pos' 
 import TransfersList from './pages/business/transfers/TransfersList'
 import CreateTransferList from './pages/business/transfers/CreateTransferList'
+import ExpensesList from './pages/business/expenses/ExpensesList'
+import ExpenseCategoriesList from './pages/business/expenses/ExpenseCategoriesList'
 
 function App() {
   return (
@@ -154,6 +156,10 @@ function App() {
           {/* STOCK TRANSFERS */}
           <Route path="/transfers/list" element={<TransfersList />} />
           <Route path="/transfers/list/create" element={<CreateTransferList />} />
+
+          {/* EXPENSES */}
+          <Route path="/expenses/list" element={<ExpensesList />} />
+          <Route path="/expenses/categories" element={<ExpenseCategoriesList />} />
 
 
         </Route>
